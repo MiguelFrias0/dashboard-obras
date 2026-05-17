@@ -21,7 +21,7 @@ st.markdown("""
     }
     .subtext-chamativo {
         font-size: 13px;
-        color: #00ffcc; /* Ciano Neon para desempenho positivo */
+        color: #00ffcc; /* Ciano Neon */
         font-weight: bold;
         margin-top: -10px;
         margin-bottom: 15px;
@@ -29,7 +29,7 @@ st.markdown("""
     }
     .subtext-alerta {
         font-size: 13px;
-        color: #ff4b4b; /* Vermelho para desempenho negativo */
+        color: #ff4b4b; /* Vermelho */
         font-weight: bold;
         margin-top: -10px;
         margin-bottom: 15px;
@@ -63,37 +63,35 @@ def load_data():
     return data
 
 # ==========================================
-# 2. PROCESSAMENTO E LÓGICA
+# 2. PROCESSAMENTO E LÓGICA (COM FUSO HORÁRIO BR)
 # ==========================================
 try:
     df_raw = load_data()
     status_f = df_raw['FIM / AÇÃO'].astype(str).str.lower()
 
-    hoje = datetime.now().date()
+    # --- AJUSTE DE FUSO HORÁRIO (UTC-3 BRASÍLIA) ---
+    agora_brasil = datetime.utcnow() - timedelta(hours=3)
+    hoje = agora_brasil.date()
     
     # 1. Calendário Dinâmico
-    segunda = hoje - timedelta(days=hoje.weekday())
+    segunda = hoje - timedelta(days=agora_brasil.weekday())
     domingo = segunda + timedelta(days=6)
     periodo = st.sidebar.date_input("Filtrar Período de Análise", value=(segunda, domingo), format="DD/MM/YYYY")
 
-    # ==========================================
-    # A MÁGICA: ZONA AUTÔNOMA (MESES FECHADOS)
-    # ==========================================
+    # 2. Zona Autônoma (Meses Fechados)
     hoje_pd = pd.to_datetime(hoje)
     primeiro_dia_mes_atual = hoje_pd.replace(day=1)
     
-    # Ex: Se hoje é Maio, fim_tri = 30 de Abril. inicio_tri = 1º de Fevereiro.
     fim_tri = (primeiro_dia_mes_atual - pd.Timedelta(days=1)).date()
     inicio_tri = (primeiro_dia_mes_atual - pd.DateOffset(months=3)).date()
     
-    # Calcula exatamente quantas semanas tem nesses 3 meses
     dias_tri = (fim_tri - inicio_tri).days + 1
     semanas_tri = dias_tri / 7 
 
     if isinstance(periodo, tuple) and len(periodo) == 2:
         inicio, fim = periodo
         
-        # --- CÁLCULOS DO PERÍODO SELECIONADO (CALENDÁRIO) ---
+        # --- CÁLCULOS DO PERÍODO SELECIONADO ---
         mask_desp = (df_raw['DESPACHADO'] >= inicio) & (df_raw['DESPACHADO'] <= fim)
         total_despachados = df_raw[mask_desp].shape[0]
 
@@ -106,28 +104,26 @@ try:
         taxa_conversao = (total_enviados / total_despachados) * 100 if total_despachados > 0 else 0.0
         taxa_str = f"{taxa_conversao:.1f}%"
 
-        # --- CÁLCULOS DO TRIMESTRE FECHADO (MÉDIAS SEMANAIS) ---
+        # --- CÁLCULOS DO TRIMESTRE FECHADO ---
         mask_desp_tri = (df_raw['DESPACHADO'] >= inicio_tri) & (df_raw['DESPACHADO'] <= fim_tri)
         total_desp_tri = df_raw[mask_desp_tri].shape[0]
 
         mask_env_tri = (df_raw['ENVIADO'] >= inicio_tri) & (df_raw['ENVIADO'] <= fim_tri) & (status_f.str.contains('ok', na=False))
         total_env_tri = df_raw[mask_env_tri].shape[0]
 
-        media_desp_semana = total_desp_tri / semanas_tri
-        media_env_semana = total_env_tri / semanas_tri
+        media_desp_semana = total_desp_tri / semanas_tri if semanas_tri > 0 else 0
+        media_env_semana = total_env_tri / semanas_tri if semanas_tri > 0 else 0
 
-        # --- CÁLCULO DE CRESCIMENTO (% VS MÉDIA) ---
+        # --- CÁLCULO DE CRESCIMENTO ---
         perc_desp = ((total_despachados - media_desp_semana) / media_desp_semana) * 100 if media_desp_semana > 0 else 0
         perc_env = ((total_enviados - media_env_semana) / media_env_semana) * 100 if media_env_semana > 0 else 0
 
-        # Cores (verde/ciano para positivo, vermelho para negativo)
         classe_desp = "subtext-chamativo" if perc_desp >= 0 else "subtext-alerta"
         sinal_desp = "+" if perc_desp >= 0 else ""
         
         classe_env = "subtext-chamativo" if perc_env >= 0 else "subtext-alerta"
         sinal_env = "+" if perc_env >= 0 else ""
 
-        # --- METAS SEMANAIS (Baseado na média do trimestre fechado) ---
         meta_equipe_semana = media_desp_semana * 1.30
         meta_individual_semana = meta_equipe_semana / 4
 
@@ -138,17 +134,14 @@ try:
         st.write(f"Filtro Dinâmico: **{inicio.strftime('%d/%m/%Y')}** até **{fim.strftime('%d/%m/%Y')}**")
         st.markdown("---")
 
-        # --- FILEIRA PRINCIPAL: DADOS DINÂMICOS ---
         c1, c2, c3, c4 = st.columns(4)
         with c1: st.metric("🚛 Despachados", total_despachados)
         with c2: st.metric("✅ Enviados (OK)", total_enviados)
         with c3: st.metric("📊 Enviados Vs. Despachados", taxa_str)
         with c4: st.metric("🚫 Cancelados", total_cancelados)
 
-        # --- SEGUNDA FILEIRA: ZONA AUTÔNOMA (HISTÓRICO E METAS) ---
         st.markdown("<br>", unsafe_allow_html=True)
         
-        # Dicionário para traduzir o mês para o título
         meses = {1: 'Jan', 2: 'Fev', 3: 'Mar', 4: 'Abr', 5: 'Mai', 6: 'Jun', 
                  7: 'Jul', 8: 'Ago', 9: 'Set', 10: 'Out', 11: 'Nov', 12: 'Dez'}
         texto_trimestre = f"{meses[inicio_tri.month]} a {meses[fim_tri.month]}/{fim_tri.year}"
@@ -156,26 +149,21 @@ try:
         st.subheader(f"🎯 Desempenho e Metas (Base Meses Fechados: {texto_trimestre})")
         
         ca1, ca2, ca3, ca4 = st.columns(4)
-        
         with ca1:
             st.metric("🏭 Média Despachos / Sem", f"{media_desp_semana:.1f}")
             st.markdown(f"<p class='{classe_desp}'>⚡ Período: {sinal_desp}{perc_desp:.1f}% vs média</p>", unsafe_allow_html=True)
-            
         with ca2:
             st.metric("📈 Média Envios / Sem", f"{media_env_semana:.1f}")
             st.markdown(f"<p class='{classe_env}'>⚡ Período: {sinal_env}{perc_env:.1f}% vs média</p>", unsafe_allow_html=True)
-            
         with ca3:
             st.metric("👥 Meta Equipe (Semanal)", f"{meta_equipe_semana:.1f}")
             st.markdown("<p class='subtext-chamativo' style='color: #ffaa00;'>🏆 Média Despachos + 30%</p>", unsafe_allow_html=True)
-            
         with ca4:
             st.metric("👤 Meta Individual (Semanal)", f"{meta_individual_semana:.1f}")
             st.markdown("<p class='subtext-chamativo' style='color: #ffaa00;'>🏃‍♂️ Divisão por 4 Orçamentistas</p>", unsafe_allow_html=True)
 
         st.markdown("---")
 
-        # Gráfico e Tabela
         st.subheader("📈 Tendência de Fluxo Histórico")
         rec_g = df_raw.groupby('RECEBIDO').size().rename('Recebidos')
         desp_g = df_raw.groupby('DESPACHADO').size().rename('Despachados')
