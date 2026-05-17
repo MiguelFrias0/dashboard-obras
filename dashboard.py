@@ -127,7 +127,7 @@ try:
         # ==========================================
         # 3. INTERFACE GRÁFICA
         # ==========================================
-        st.title("🏗️ Dashboard de Gestão | Costa Company")
+        st.title("🏗️ Dashboard de Gestão")
         st.write(f"Filtro Dinâmico: **{inicio.strftime('%d/%m/%Y')}** até **{fim.strftime('%d/%m/%Y')}**")
         st.markdown("---")
 
