@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 # ==========================================
 # 1. CONFIGURAÇÃO E IDENTIDADE PREMIUM
 # ==========================================
-st.set_page_config(page_title="Costa Company - Gestão de Projetos", layout="wide")
+st.set_page_config(page_title="Gestão de Projetos", layout="wide")
 
 st.markdown("""
     <style>
