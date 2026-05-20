@@ -60,11 +60,14 @@ def load_data():
     response = supabase.table("Data_Base_Secundaria").select("*").limit(10000).execute()
     data = pd.DataFrame(response.data)
     
-    data = data[~data.isin(['X', 'x']).any(axis=1)]
+    # [CORREÇÃO CRÍTICA 1] A regra abaixo estava DELETANDO qualquer linha que tivesse "X" em qualquer lugar. Comentei para parar de sumir dados!
+    # data = data[~data.isin(['X', 'x']).any(axis=1)]
+    
     colunas_data = ['RECEBIDO', 'DESPACHADO', 'PREVISÃO ENVIO', 'ENVIADO']
     for col in colunas_data:
         if col in data.columns:
-            data[col] = pd.to_datetime(data[col], errors='coerce').dt.date
+            # [CORREÇÃO CRÍTICA 2] Adicionado dayfirst=True para o Python não trocar o Dia pelo Mês e jogar o dado pra fora do filtro.
+            data[col] = pd.to_datetime(data[col], errors='coerce', dayfirst=True).dt.date
             
     return data
 
@@ -79,7 +82,17 @@ def get_iso_week_label(date_obj):
 # ==========================================
 try:
     df_raw = load_data()
-    status_f = df_raw['FIM / AÇÃO'].astype(str).str.lower()
+    
+    COLUNA_NOME = 'RESPONSAVEL'
+    COLUNA_CAMPO = 'PROFISSIONAL CAMPO'
+    COLUNA_CLIENTE = 'CLIENTE'
+    
+    # [CORREÇÃO CRÍTICA 3] Limpeza de espaços invisíveis nos nomes para unificar "Miguel", " Miguel" e "Miguel ".
+    if COLUNA_NOME in df_raw.columns:
+        df_raw[COLUNA_NOME] = df_raw[COLUNA_NOME].astype(str).str.strip().str.title()
+        df_raw.loc[df_raw[COLUNA_NOME].str.lower() == 'nan', COLUNA_NOME] = None # Limpa valores vazios
+
+    status_f = df_raw['FIM / AÇÃO'].astype(str).str.lower().str.strip()
 
     agora_brasil = datetime.utcnow() - timedelta(hours=3)
     hoje = agora_brasil.date()
@@ -99,11 +112,8 @@ try:
     dias_tri = (fim_tri - inicio_tri).days + 1
     semanas_tri = dias_tri / 7 
 
-    st.title("🏗️ Dashboard de Gestão - Fase 2")
-    
-    COLUNA_NOME = 'RESPONSAVEL'
-    COLUNA_CAMPO = 'PROFISSIONAL CAMPO'
-    COLUNA_CLIENTE = 'CLIENTE'
+    # NOME CORRIGIDO AQUI
+    st.title("🏗️ Dashboard de Gestão")
     
     # CRIANDO AS QUATRO TELAS (ABAS)
     tab_geral, tab_individual, tab_time, tab_campo = st.tabs([
@@ -238,7 +248,7 @@ try:
             st.write(f"Análise baseada no período dinâmico de **{inicio.strftime('%d/%m/%Y')}** até **{fim.strftime('%d/%m/%Y')}**")
             
             if COLUNA_NOME in df_raw.columns:
-                responsaveis = sorted(df_raw[COLUNA_NOME].dropna().unique())
+                responsaveis = sorted([r for r in df_raw[COLUNA_NOME].unique() if r is not None])
                 for nome in responsaveis:
                     df_pessoa = df_raw[df_raw[COLUNA_NOME] == nome]
                     rec_ind = df_pessoa[(df_pessoa['RECEBIDO'] >= inicio) & (df_pessoa['RECEBIDO'] <= fim)].shape[0]
@@ -293,7 +303,6 @@ try:
         st.subheader("👷 Alocação e Distribuição por Profissional de Campo")
         st.write("Visão do volume total do banco de dados (ignorando filtros de data).")
         
-        # --- NOVA BARRA DE PESQUISA ---
         termo_pesquisa = st.text_input("🔍 Pesquisar parceiro por nome...", placeholder="Ex: João Silva").strip().upper()
         
         st.markdown("---")
@@ -303,16 +312,13 @@ try:
             df_validos = df_raw.dropna(subset=[COLUNA_CAMPO]).copy()
             df_validos[COLUNA_CAMPO] = df_validos[COLUNA_CAMPO].astype(str).str.strip().str.upper()
             
-            # Pega a lista geral de profissionais
             profissionais_geral = sorted([p for p in df_validos[COLUNA_CAMPO].unique() if p != "" and p != "NAN"])
             
-            # Aplica o filtro da pesquisa, se houver algo digitado
             if termo_pesquisa:
                 profissionais = [p for p in profissionais_geral if termo_pesquisa in p]
             else:
                 profissionais = profissionais_geral
                 
-            # Renderiza os resultados
             if not profissionais:
                 st.warning("Nenhum parceiro encontrado com esse nome. Tente buscar por outro termo.")
             else:
