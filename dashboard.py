@@ -97,7 +97,7 @@ try:
     dias_tri = (fim_tri - inicio_tri).days + 1
     semanas_tri = dias_tri / 7 
 
-    st.title("🏗️ Dashboard de Gestão - Fase 2")
+    st.title("🏗️ Dashboard de Gestão")
     
     # CRIANDO AS DUAS TELAS (ABAS)
     tab_geral, tab_individual = st.tabs(["📊 Visão Geral", "👤 Análise Individual"])
