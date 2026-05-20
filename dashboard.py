@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from supabase import create_client, Client
 from datetime import datetime, timedelta
+import plotly.express as px # Adicionado Plotly para o gráfico semanal
 
 # ==========================================
 # 1. CONFIGURAÇÃO E IDENTIDADE PREMIUM
@@ -63,6 +64,17 @@ def load_data():
     return data
 
 # ==========================================
+# FUNÇÕES DE APOIO
+# ==========================================
+def get_iso_week_label(date_obj):
+    """Retorna uma string no formato 'Sem. XX - YYYY' baseada na data."""
+    if pd.isna(date_obj):
+        return None
+    # isocalendar retorna (ano, semana, dia_da_semana)
+    iso_year, iso_week, _ = date_obj.isocalendar()
+    return f"Sem. {iso_week:02d} - {iso_year}"
+
+# ==========================================
 # 2. PROCESSAMENTO E LÓGICA (COM FUSO HORÁRIO BR)
 # ==========================================
 try:
@@ -73,7 +85,7 @@ try:
     agora_brasil = datetime.utcnow() - timedelta(hours=3)
     hoje = agora_brasil.date()
     
-    # 1. Calendário Dinâmico
+    # 1. Calendário Dinâmico (Sidebar)
     segunda = hoje - timedelta(days=agora_brasil.weekday())
     domingo = segunda + timedelta(days=6)
     periodo = st.sidebar.date_input("Filtrar Período de Análise", value=(segunda, domingo), format="DD/MM/YYYY")
@@ -88,6 +100,63 @@ try:
     dias_tri = (fim_tri - inicio_tri).days + 1
     semanas_tri = dias_tri / 7 
 
+    # ==========================================
+    # 3. INTERFACE GRÁFICA
+    # ==========================================
+    st.title("🏗️ Dashboard de Gestão - Fase 2")
+
+    # --- NOVO BLOCO: GRÁFICO SEMANAL FIXO ---
+    st.markdown("---")
+    st.subheader("📊 Histórico Geral de Produção (Consolidado Semanal)")
+    
+    # Criando colunas de semana para cada etapa
+    df_semanal = df_raw.copy()
+    df_semanal['Semana_Recebido'] = pd.to_datetime(df_semanal['RECEBIDO']).apply(get_iso_week_label)
+    df_semanal['Semana_Despachado'] = pd.to_datetime(df_semanal['DESPACHADO']).apply(get_iso_week_label)
+    df_semanal['Semana_Enviado'] = pd.to_datetime(df_semanal['ENVIADO']).apply(get_iso_week_label)
+    
+    # Adicionando regra para cancelados (usando data de RECEBIDO como base temporal para o cancelamento)
+    mask_cancelados_geral = status_f.str.contains('cancelad', na=False)
+    
+    # Agrupamentos
+    rec_semana = df_semanal.groupby('Semana_Recebido').size().rename('Recebidos')
+    desp_semana = df_semanal.groupby('Semana_Despachado').size().rename('Despachados')
+    
+    # Enviados (só status ok)
+    env_semana = df_semanal[status_f.str.contains('ok', na=False)].groupby('Semana_Enviado').size().rename('Enviados')
+    
+    # Cancelados (baseados na data que foram recebidos)
+    canc_semana = df_semanal[mask_cancelados_geral].groupby('Semana_Recebido').size().rename('Cancelados')
+
+    # Consolidando o DataFrame do Gráfico
+    df_chart_semanal = pd.concat([rec_semana, desp_semana, env_semana, canc_semana], axis=1).fillna(0).astype(int)
+    
+    # Ordenar o index (As strings 'Sem. XX - YYYY' não ordenam perfeitamente ano a ano sozinhas, 
+    # precisamos ordenar pelo ano e depois pela semana. Como o formato é Sem. WW - YYYY, 
+    # vamos criar uma chave de ordenação temporária YYYYWW)
+    if not df_chart_semanal.empty:
+        df_chart_semanal['sort_key'] = df_chart_semanal.index.str[-4:] + df_chart_semanal.index.str[5:7]
+        df_chart_semanal = df_chart_semanal.sort_values('sort_key').drop(columns=['sort_key'])
+
+        # Renderizando com Plotly para melhor visualização interativa
+        fig = px.line(df_chart_semanal, 
+                      x=df_chart_semanal.index, 
+                      y=['Recebidos', 'Despachados', 'Enviados', 'Cancelados'],
+                      labels={'value': 'Quantidade de Projetos', 'index': 'Semanas', 'variable': 'Métricas'},
+                      color_discrete_map={
+                          'Recebidos': '#1f77b4',     # Azul
+                          'Despachados': '#ff7f0e',   # Laranja
+                          'Enviados': '#2ca02c',      # Verde
+                          'Cancelados': '#d62728'     # Vermelho
+                      })
+        fig.update_layout(plot_bgcolor='#0e1117', paper_bgcolor='#0e1117', font_color='#ffffff')
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("Aguardando dados suficientes para gerar o histórico semanal.")
+
+    st.markdown("---")
+
+    # --- BLOCO DINÂMICO (DEPENDE DO FILTRO DA SIDEBAR) ---
     if isinstance(periodo, tuple) and len(periodo) == 2:
         inicio, fim = periodo
         
@@ -127,12 +196,8 @@ try:
         meta_equipe_semana = media_desp_semana * 1.30
         meta_individual_semana = meta_equipe_semana / 4
 
-        # ==========================================
-        # 3. INTERFACE GRÁFICA
-        # ==========================================
-        st.title("🏗️ Dashboard de Gestão")
-        st.write(f"Filtro Dinâmico: **{inicio.strftime('%d/%m/%Y')}** até **{fim.strftime('%d/%m/%Y')}**")
-        st.markdown("---")
+        st.subheader(f"🔍 Análise do Período Filtrado")
+        st.write(f"De **{inicio.strftime('%d/%m/%Y')}** até **{fim.strftime('%d/%m/%Y')}**")
 
         c1, c2, c3, c4 = st.columns(4)
         with c1: st.metric("🚛 Despachados", total_despachados)
@@ -164,13 +229,13 @@ try:
 
         st.markdown("---")
 
-        st.subheader("📈 Tendência de Fluxo Histórico")
+        st.subheader("📈 Tendência Diária do Período Filtrado")
         rec_g = df_raw.groupby('RECEBIDO').size().rename('Recebidos')
         desp_g = df_raw.groupby('DESPACHADO').size().rename('Despachados')
         env_g = df_raw[status_f.str.contains('ok', na=False)].groupby('ENVIADO').size().rename('Enviados')
         
-        df_chart = pd.concat([rec_g, desp_g, env_g], axis=1).fillna(0).astype(int).sort_index()
-        st.line_chart(df_chart.loc[inicio:fim])
+        df_chart_diario = pd.concat([rec_g, desp_g, env_g], axis=1).fillna(0).astype(int).sort_index()
+        st.line_chart(df_chart_diario.loc[inicio:fim])
 
         st.markdown("---")
         st.subheader("📋 Detalhamento dos Projetos Ativos")
