@@ -99,7 +99,7 @@ try:
     dias_tri = (fim_tri - inicio_tri).days + 1
     semanas_tri = dias_tri / 7 
 
-    st.title("🏗️ Dashboard de Gestão")
+    st.title("🏗️ Dashboard de Gestão - Fase 2")
     
     COLUNA_NOME = 'RESPONSAVEL'
     COLUNA_CAMPO = 'PROFISSIONAL CAMPO'
@@ -260,7 +260,9 @@ try:
                             df_graf_ind = pd.DataFrame({'Status': ['Recebidos', 'Enviados', 'Cancelados'], 'Qtd': [rec_ind, env_ind, canc_ind]})
                             fig_bar = px.bar(df_graf_ind, x='Status', y='Qtd', color='Status', color_discrete_map={'Recebidos': '#2ca02c', 'Enviados': '#1f77b4', 'Cancelados': '#d62728'}, height=150)
                             fig_bar.update_layout(margin=dict(l=0, r=0, t=20, b=0), showlegend=False, plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', xaxis_title=None, yaxis_title=None)
-                            st.plotly_chart(fig_bar, use_container_width=True)
+                            
+                            # CORREÇÃO: Adicionando chave única (key) baseada no nome
+                            st.plotly_chart(fig_bar, use_container_width=True, key=f"bar_{nome}")
             else:
                 st.error(f"Coluna '{COLUNA_NOME}' não encontrada.")
 
@@ -295,19 +297,19 @@ try:
         st.markdown("---")
         
         if COLUNA_CAMPO in df_raw.columns and COLUNA_CLIENTE in df_raw.columns:
-            # Pega lista única de profissionais de campo, ignorando campos vazios
-            df_validos = df_raw.dropna(subset=[COLUNA_CAMPO])
-            profissionais = sorted([p for p in df_validos[COLUNA_CAMPO].unique() if str(p).strip() != ""])
+            
+            # CORREÇÃO DE DADOS: Padronizando nomes para maiúsculas para agrupar duplicados como "A DEFINIR" e "a definir"
+            df_validos = df_raw.dropna(subset=[COLUNA_CAMPO]).copy()
+            df_validos[COLUNA_CAMPO] = df_validos[COLUNA_CAMPO].astype(str).str.strip().str.upper()
+            
+            # Pega lista única de profissionais ignorando vazios
+            profissionais = sorted([p for p in df_validos[COLUNA_CAMPO].unique() if p != "" and p != "NAN"])
             
             for prof in profissionais:
-                # Filtra a base inteira para o profissional específico
                 df_prof = df_validos[df_validos[COLUNA_CAMPO] == prof]
                 total_projetos = len(df_prof)
                 
-                # Cria a barra clicável (Expander)
                 with st.expander(f"🛠️ {prof} | Total Geral: {total_projetos} projetos"):
-                    
-                    # Calcula quantos projetos são de cada cliente
                     contagem_clientes = df_prof[COLUNA_CLIENTE].value_counts().reset_index()
                     contagem_clientes.columns = ['Cliente', 'Quantidade de Projetos']
                     
@@ -315,17 +317,15 @@ try:
                     
                     with col1:
                         st.markdown("**Distribuição por Cliente:**")
-                        # Mostra a tabela sem o índice lateral
                         st.dataframe(contagem_clientes, hide_index=True, use_container_width=True)
                         
                     with col2:
-                        # Gráfico de Rosca (Donut) para os clientes
                         if not contagem_clientes.empty:
                             fig_pie = px.pie(
                                 contagem_clientes, 
                                 values='Quantidade de Projetos', 
                                 names='Cliente', 
-                                hole=0.4, # Deixa com formato de rosca
+                                hole=0.4, 
                                 color_discrete_sequence=px.colors.qualitative.Set2
                             )
                             fig_pie.update_layout(
@@ -335,7 +335,8 @@ try:
                                 paper_bgcolor='rgba(0,0,0,0)',
                                 font_color='#ffffff'
                             )
-                            st.plotly_chart(fig_pie, use_container_width=True)
+                            # CORREÇÃO: Adicionando chave única (key) baseada no nome do profissional
+                            st.plotly_chart(fig_pie, use_container_width=True, key=f"pie_{prof}")
         else:
             st.error(f"Certifique-se de que as colunas '{COLUNA_CAMPO}' e '{COLUNA_CLIENTE}' existem na sua base de dados.")
 
