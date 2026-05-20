@@ -60,13 +60,10 @@ def load_data():
     response = supabase.table("Data_Base_Secundaria").select("*").limit(10000).execute()
     data = pd.DataFrame(response.data)
     
-    # [CORREÇÃO CRÍTICA 1] A regra abaixo estava DELETANDO qualquer linha que tivesse "X" em qualquer lugar. Comentei para parar de sumir dados!
-    # data = data[~data.isin(['X', 'x']).any(axis=1)]
-    
     colunas_data = ['RECEBIDO', 'DESPACHADO', 'PREVISÃO ENVIO', 'ENVIADO']
     for col in colunas_data:
         if col in data.columns:
-            # [CORREÇÃO CRÍTICA 2] Adicionado dayfirst=True para o Python não trocar o Dia pelo Mês e jogar o dado pra fora do filtro.
+            # dayfirst=True garante que o Python não confunda Dia com Mês no padrão BR
             data[col] = pd.to_datetime(data[col], errors='coerce', dayfirst=True).dt.date
             
     return data
@@ -87,10 +84,11 @@ try:
     COLUNA_CAMPO = 'PROFISSIONAL CAMPO'
     COLUNA_CLIENTE = 'CLIENTE'
     
-    # [CORREÇÃO CRÍTICA 3] Limpeza de espaços invisíveis nos nomes para unificar "Miguel", " Miguel" e "Miguel ".
+    # [ESCUDO ANTI-NAN] Garante que TUDO nas colunas de nomes seja tratado EXCLUSIVAMENTE como texto
     if COLUNA_NOME in df_raw.columns:
         df_raw[COLUNA_NOME] = df_raw[COLUNA_NOME].astype(str).str.strip().str.title()
-        df_raw.loc[df_raw[COLUNA_NOME].str.lower() == 'nan', COLUNA_NOME] = None # Limpa valores vazios
+    if COLUNA_CAMPO in df_raw.columns:
+        df_raw[COLUNA_CAMPO] = df_raw[COLUNA_CAMPO].astype(str).str.strip().str.upper()
 
     status_f = df_raw['FIM / AÇÃO'].astype(str).str.lower().str.strip()
 
@@ -112,7 +110,6 @@ try:
     dias_tri = (fim_tri - inicio_tri).days + 1
     semanas_tri = dias_tri / 7 
 
-    # NOME CORRIGIDO AQUI
     st.title("🏗️ Dashboard de Gestão")
     
     # CRIANDO AS QUATRO TELAS (ABAS)
@@ -199,7 +196,9 @@ try:
             desp_g = df_raw.groupby('DESPACHADO').size().rename('Despachados')
             env_g = df_raw[status_f.str.contains('ok', na=False)].groupby('ENVIADO').size().rename('Enviados')
             
-            df_chart_diario = pd.concat([rec_g, desp_g, env_g], axis=1).fillna(0).astype(int).sort_index()
+            # Anti-NaN no gráfico diário
+            df_chart_diario = pd.concat([rec_g, desp_g, env_g], axis=1).fillna(0).astype(int)
+            df_chart_diario = df_chart_diario[df_chart_diario.index.notna()].sort_index()
             st.line_chart(df_chart_diario.loc[inicio:fim])
 
             st.markdown("---")
@@ -223,6 +222,9 @@ try:
             df_chart_semanal = pd.concat([rec_semana, desp_semana, env_semana, canc_semana], axis=1).fillna(0).astype(int)
             
             if not df_chart_semanal.empty:
+                # Anti-NaN no gráfico semanal
+                df_chart_semanal = df_chart_semanal[df_chart_semanal.index.notna()]
+                df_chart_semanal.index = df_chart_semanal.index.astype(str)
                 df_chart_semanal['sort_key'] = df_chart_semanal.index.str[-4:] + df_chart_semanal.index.str[5:7]
                 df_chart_semanal = df_chart_semanal.sort_values('sort_key').drop(columns=['sort_key'])
 
@@ -248,7 +250,9 @@ try:
             st.write(f"Análise baseada no período dinâmico de **{inicio.strftime('%d/%m/%Y')}** até **{fim.strftime('%d/%m/%Y')}**")
             
             if COLUNA_NOME in df_raw.columns:
-                responsaveis = sorted([r for r in df_raw[COLUNA_NOME].unique() if r is not None])
+                # O filtro " != 'nan' " impede que o Python trave tentando ler células fantasmas
+                responsaveis = sorted([r for r in df_raw[COLUNA_NOME].unique() if str(r).lower() != 'nan' and str(r).strip() != ''])
+                
                 for nome in responsaveis:
                     df_pessoa = df_raw[df_raw[COLUNA_NOME] == nome]
                     rec_ind = df_pessoa[(df_pessoa['RECEBIDO'] >= inicio) & (df_pessoa['RECEBIDO'] <= fim)].shape[0]
@@ -292,6 +296,9 @@ try:
             df_time_chart = pd.concat([rec_por_analista, env_por_analista], axis=1).fillna(0).astype(int).reset_index()
             
             if not df_time_chart.empty:
+                # Remove o lixo (NaNs) do gráfico de barras do time
+                df_time_chart = df_time_chart[df_time_chart[COLUNA_NOME].str.lower() != 'nan']
+                
                 fig_time = px.bar(df_time_chart, x=COLUNA_NOME, y=['Recebidos', 'Enviados'], barmode='group', labels={'value': 'Total de Projetos', COLUNA_NOME: 'Orçamentistas', 'variable': 'Status'}, color_discrete_map={'Recebidos': '#2ca02c', 'Enviados': '#1f77b4'})
                 fig_time.update_layout(plot_bgcolor='#0e1117', paper_bgcolor='#0e1117', font_color='#ffffff', xaxis_title="Equipe", yaxis_title="Volume Acumulado")
                 st.plotly_chart(fig_time, use_container_width=True)
@@ -309,10 +316,8 @@ try:
         
         if COLUNA_CAMPO in df_raw.columns and COLUNA_CLIENTE in df_raw.columns:
             
-            df_validos = df_raw.dropna(subset=[COLUNA_CAMPO]).copy()
-            df_validos[COLUNA_CAMPO] = df_validos[COLUNA_CAMPO].astype(str).str.strip().str.upper()
-            
-            profissionais_geral = sorted([p for p in df_validos[COLUNA_CAMPO].unique() if p != "" and p != "NAN"])
+            # Filtra "nans" invisíveis
+            profissionais_geral = sorted([p for p in df_raw[COLUNA_CAMPO].unique() if str(p).lower() != 'nan' and str(p).strip() != ''])
             
             if termo_pesquisa:
                 profissionais = [p for p in profissionais_geral if termo_pesquisa in p]
@@ -323,7 +328,7 @@ try:
                 st.warning("Nenhum parceiro encontrado com esse nome. Tente buscar por outro termo.")
             else:
                 for prof in profissionais:
-                    df_prof = df_validos[df_validos[COLUNA_CAMPO] == prof]
+                    df_prof = df_raw[df_raw[COLUNA_CAMPO] == prof]
                     total_projetos = len(df_prof)
                     
                     with st.expander(f"🛠️ {prof} | Total Geral: {total_projetos} projetos"):
