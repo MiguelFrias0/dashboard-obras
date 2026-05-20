@@ -97,13 +97,16 @@ try:
     dias_tri = (fim_tri - inicio_tri).days + 1
     semanas_tri = dias_tri / 7 
 
-    st.title("🏗️ Dashboard de Gestão")
+    st.title("🏗️ Dashboard de Gestão - Fase 2")
     
-    # CRIANDO AS DUAS TELAS (ABAS)
-    tab_geral, tab_individual = st.tabs(["📊 Visão Geral", "👤 Análise Individual"])
+    # NOME DA COLUNA DOS ANALISTAS (AJUSTE SE NECESSÁRIO)
+    COLUNA_NOME = 'RESPONSAVEL'
+    
+    # CRIANDO AS TRÊS TELAS (ABAS)
+    tab_geral, tab_individual, tab_time = st.tabs(["📊 Visão Geral", "👤 Análise Individual", "👥 Análise do Time"])
 
     # ==========================================
-    # ABA 1: VISÃO GERAL (O Dashboard que já tínhamos)
+    # ABA 1: VISÃO GERAL
     # ==========================================
     with tab_geral:
         if isinstance(periodo, tuple) and len(periodo) == 2:
@@ -219,42 +222,32 @@ try:
             st.dataframe(df_table, use_container_width=True)
 
     # ==========================================
-    # ABA 2: ANÁLISE INDIVIDUAL (NOVA TELA)
+    # ABA 2: ANÁLISE INDIVIDUAL
     # ==========================================
     with tab_individual:
         st.subheader("🧑‍💼 Desempenho por Orçamentista")
         
-        # ⚠️ ALERTA: Substitua 'RESPONSAVEL' pelo nome exato da sua coluna no banco de dados
-        COLUNA_NOME = 'RESPONSAVEL' 
-        
         if isinstance(periodo, tuple) and len(periodo) == 2:
             inicio, fim = periodo
-            st.write(f"Análise baseada no período de **{inicio.strftime('%d/%m/%Y')}** até **{fim.strftime('%d/%m/%Y')}**")
+            st.write(f"Análise baseada no período dinâmico de **{inicio.strftime('%d/%m/%Y')}** até **{fim.strftime('%d/%m/%Y')}**")
             
             if COLUNA_NOME in df_raw.columns:
-                # Pegar nomes únicos e colocar em ordem alfabética
                 responsaveis = sorted(df_raw[COLUNA_NOME].dropna().unique())
                 
                 for nome in responsaveis:
-                    # Filtra o dataframe só para essa pessoa
                     df_pessoa = df_raw[df_raw[COLUNA_NOME] == nome]
                     
-                    # Cálculos individuais do período filtrado
                     rec_ind = df_pessoa[(df_pessoa['RECEBIDO'] >= inicio) & (df_pessoa['RECEBIDO'] <= fim)].shape[0]
                     env_ind = df_pessoa[(df_pessoa['ENVIADO'] >= inicio) & (df_pessoa['ENVIADO'] <= fim) & (df_pessoa['FIM / AÇÃO'].astype(str).str.lower().str.contains('ok'))].shape[0]
                     canc_ind = df_pessoa[(df_pessoa['RECEBIDO'] >= inicio) & (df_pessoa['RECEBIDO'] <= fim) & (df_pessoa['FIM / AÇÃO'].astype(str).str.lower().str.contains('cancelad'))].shape[0]
                     
                     taxa_ind = (env_ind / rec_ind) * 100 if rec_ind > 0 else 0.0
                     
-                    # Cria um retângulo (borda) para cada pessoa
                     with st.container(border=True):
                         st.markdown(f"### {nome}")
-                        
-                        # Divide o retângulo: 70% para os cards, 30% para o gráfico
                         col_cards, col_grafico = st.columns([7, 3])
                         
                         with col_cards:
-                            # 4 Cards individuais
                             mc1, mc2, mc3, mc4 = st.columns(4)
                             mc1.metric("Recebidos", rec_ind)
                             mc2.metric("Enviados", env_ind)
@@ -262,36 +255,65 @@ try:
                             mc4.metric("Taxa de Envio", f"{taxa_ind:.1f}%")
                             
                         with col_grafico:
-                            # Mini Gráfico de Barras
-                            df_graf_ind = pd.DataFrame({
-                                'Status': ['Recebidos', 'Enviados', 'Cancelados'],
-                                'Qtd': [rec_ind, env_ind, canc_ind]
-                            })
-                            
+                            df_graf_ind = pd.DataFrame({'Status': ['Recebidos', 'Enviados', 'Cancelados'], 'Qtd': [rec_ind, env_ind, canc_ind]})
                             fig_bar = px.bar(
-                                df_graf_ind, 
-                                x='Status', 
-                                y='Qtd', 
-                                color='Status',
-                                color_discrete_map={
-                                    'Recebidos': '#2ca02c', # Verde
-                                    'Enviados': '#1f77b4',  # Azul
-                                    'Cancelados': '#d62728' # Vermelho
-                                },
-                                height=150 # Mantém o gráfico pequeno para caber do lado
+                                df_graf_ind, x='Status', y='Qtd', color='Status',
+                                color_discrete_map={'Recebidos': '#2ca02c', 'Enviados': '#1f77b4', 'Cancelados': '#d62728'},
+                                height=150
                             )
-                            # Remove legendas e margens para o gráfico ficar "limpo" dentro do retângulo
-                            fig_bar.update_layout(
-                                margin=dict(l=0, r=0, t=20, b=0), 
-                                showlegend=False, 
-                                plot_bgcolor='rgba(0,0,0,0)', 
-                                paper_bgcolor='rgba(0,0,0,0)',
-                                xaxis_title=None,
-                                yaxis_title=None
-                            )
+                            fig_bar.update_layout(margin=dict(l=0, r=0, t=20, b=0), showlegend=False, plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', xaxis_title=None, yaxis_title=None)
                             st.plotly_chart(fig_bar, use_container_width=True)
             else:
-                st.error(f"Coluna '{COLUNA_NOME}' não encontrada no banco de dados. Verifique o nome exato da coluna com o nome dos responsáveis.")
+                st.error(f"Coluna '{COLUNA_NOME}' não encontrada.")
+
+    # ==========================================
+    # ABA 3: ANÁLISE DO TIME (GRÁFICO FIXO 2026)
+    # ==========================================
+    with tab_time:
+        st.subheader("👥 Comparativo do Time (Acumulado de 2026)")
+        st.write("Filtro Fixo: Dados contabilizados a partir de **01/01/2026**.")
+        
+        if COLUNA_NOME in df_raw.columns:
+            data_corte = pd.to_datetime('2026-01-01').date()
+            
+            # Filtro base >= 2026
+            df_rec_2026 = df_raw[df_raw['RECEBIDO'] >= data_corte]
+            df_env_2026 = df_raw[(df_raw['ENVIADO'] >= data_corte) & (status_f.str.contains('ok', na=False))]
+            
+            # Agrupamento por Analista
+            rec_por_analista = df_rec_2026.groupby(COLUNA_NOME).size().rename('Recebidos')
+            env_por_analista = df_env_2026.groupby(COLUNA_NOME).size().rename('Enviados')
+            
+            # Consolidação do dataframe
+            df_time_chart = pd.concat([rec_por_analista, env_por_analista], axis=1).fillna(0).astype(int).reset_index()
+            
+            if not df_time_chart.empty:
+                # Criação do gráfico agrupado (barmode='group')
+                fig_time = px.bar(
+                    df_time_chart,
+                    x=COLUNA_NOME,
+                    y=['Recebidos', 'Enviados'],
+                    barmode='group',
+                    labels={'value': 'Total de Projetos', COLUNA_NOME: 'Orçamentistas', 'variable': 'Status'},
+                    color_discrete_map={
+                        'Recebidos': '#2ca02c', # Verde para Recebidos
+                        'Enviados': '#1f77b4'   # Azul para Enviados
+                    }
+                )
+                
+                fig_time.update_layout(
+                    plot_bgcolor='#0e1117', 
+                    paper_bgcolor='#0e1117', 
+                    font_color='#ffffff',
+                    xaxis_title="Equipe",
+                    yaxis_title="Volume Acumulado"
+                )
+                
+                st.plotly_chart(fig_time, use_container_width=True)
+            else:
+                st.info("Nenhum dado encontrado a partir de 01/01/2026 para compor o gráfico do time.")
+        else:
+            st.error(f"Coluna '{COLUNA_NOME}' não encontrada no banco de dados.")
 
 except Exception as e:
     st.error(f"Erro ao carregar o dashboard: {e}")
