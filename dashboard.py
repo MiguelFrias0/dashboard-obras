@@ -38,6 +38,9 @@ st.markdown("""
     }
     h1, h2, h3 { color: #ffffff; font-family: 'Helvetica Neue', sans-serif; }
     .stDataFrame { border: 1px solid #333; border-radius: 10px; }
+    /* Estilização para as Abas */
+    .stTabs [data-baseweb="tab-list"] { gap: 24px; }
+    .stTabs [data-baseweb="tab"] { height: 50px; white-space: pre-wrap; font-size: 18px; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -63,11 +66,7 @@ def load_data():
             
     return data
 
-# ==========================================
-# FUNÇÕES DE APOIO
-# ==========================================
 def get_iso_week_label(date_obj):
-    """Retorna uma string no formato 'Sem. XX - YYYY' baseada na data."""
     if pd.isna(date_obj):
         return None
     iso_year, iso_week, _ = date_obj.isocalendar()
@@ -85,6 +84,8 @@ try:
     
     segunda = hoje - timedelta(days=agora_brasil.weekday())
     domingo = segunda + timedelta(days=6)
+    
+    st.sidebar.title("⚙️ Filtros")
     periodo = st.sidebar.date_input("Filtrar Período de Análise", value=(segunda, domingo), format="DD/MM/YYYY")
 
     hoje_pd = pd.to_datetime(hoje)
@@ -96,147 +97,201 @@ try:
     dias_tri = (fim_tri - inicio_tri).days + 1
     semanas_tri = dias_tri / 7 
 
-    # ==========================================
-    # 3. INTERFACE GRÁFICA: BLOCO DINÂMICO
-    # ==========================================
     st.title("🏗️ Dashboard de Gestão - Fase 2")
+    
+    # CRIANDO AS DUAS TELAS (ABAS)
+    tab_geral, tab_individual = st.tabs(["📊 Visão Geral", "👤 Análise Individual"])
 
-    if isinstance(periodo, tuple) and len(periodo) == 2:
-        inicio, fim = periodo
+    # ==========================================
+    # ABA 1: VISÃO GERAL (O Dashboard que já tínhamos)
+    # ==========================================
+    with tab_geral:
+        if isinstance(periodo, tuple) and len(periodo) == 2:
+            inicio, fim = periodo
+            
+            mask_desp = (df_raw['DESPACHADO'] >= inicio) & (df_raw['DESPACHADO'] <= fim)
+            total_despachados = df_raw[mask_desp].shape[0]
+
+            mask_env = (df_raw['ENVIADO'] >= inicio) & (df_raw['ENVIADO'] <= fim) & (status_f.str.contains('ok', na=False))
+            total_enviados = df_raw[mask_env].shape[0]
+
+            mask_canc = (df_raw['RECEBIDO'] >= inicio) & (df_raw['RECEBIDO'] <= fim) & (status_f.str.contains('cancelad', na=False))
+            total_cancelados = df_raw[mask_canc].shape[0]
+
+            taxa_conversao = (total_enviados / total_despachados) * 100 if total_despachados > 0 else 0.0
+            taxa_str = f"{taxa_conversao:.1f}%"
+
+            mask_desp_tri = (df_raw['DESPACHADO'] >= inicio_tri) & (df_raw['DESPACHADO'] <= fim_tri)
+            total_desp_tri = df_raw[mask_desp_tri].shape[0]
+
+            mask_env_tri = (df_raw['ENVIADO'] >= inicio_tri) & (df_raw['ENVIADO'] <= fim_tri) & (status_f.str.contains('ok', na=False))
+            total_env_tri = df_raw[mask_env_tri].shape[0]
+
+            media_desp_semana = total_desp_tri / semanas_tri if semanas_tri > 0 else 0
+            media_env_semana = total_env_tri / semanas_tri if semanas_tri > 0 else 0
+
+            perc_desp = ((total_despachados - media_desp_semana) / media_desp_semana) * 100 if media_desp_semana > 0 else 0
+            perc_env = ((total_enviados - media_env_semana) / media_env_semana) * 100 if media_env_semana > 0 else 0
+
+            classe_desp = "subtext-chamativo" if perc_desp >= 0 else "subtext-alerta"
+            sinal_desp = "+" if perc_desp >= 0 else ""
+            classe_env = "subtext-chamativo" if perc_env >= 0 else "subtext-alerta"
+            sinal_env = "+" if perc_env >= 0 else ""
+
+            meta_equipe_semana = media_desp_semana * 1.30
+            meta_individual_semana = meta_equipe_semana / 4
+
+            st.subheader(f"🔍 Análise do Período Filtrado")
+            st.write(f"De **{inicio.strftime('%d/%m/%Y')}** até **{fim.strftime('%d/%m/%Y')}**")
+
+            c1, c2, c3, c4 = st.columns(4)
+            with c1: st.metric("🚛 Despachados", total_despachados)
+            with c2: st.metric("✅ Enviados (OK)", total_enviados)
+            with c3: st.metric("📊 Enviados Vs. Despachados", taxa_str)
+            with c4: st.metric("🚫 Cancelados", total_cancelados)
+
+            st.markdown("<br>", unsafe_allow_html=True)
+            
+            meses = {1: 'Jan', 2: 'Fev', 3: 'Mar', 4: 'Abr', 5: 'Mai', 6: 'Jun', 
+                     7: 'Jul', 8: 'Ago', 9: 'Set', 10: 'Out', 11: 'Nov', 12: 'Dez'}
+            texto_trimestre = f"{meses[inicio_tri.month]} a {meses[fim_tri.month]}/{fim_tri.year}"
+            
+            st.subheader(f"🎯 Desempenho e Metas (Base Meses Fechados: {texto_trimestre})")
+            
+            ca1, ca2, ca3, ca4 = st.columns(4)
+            with ca1:
+                st.metric("🏭 Média Despachos / Sem", f"{media_desp_semana:.1f}")
+                st.markdown(f"<p class='{classe_desp}'>⚡ Período: {sinal_desp}{perc_desp:.1f}% vs média</p>", unsafe_allow_html=True)
+            with ca2:
+                st.metric("📈 Média Envios / Sem", f"{media_env_semana:.1f}")
+                st.markdown(f"<p class='{classe_env}'>⚡ Período: {sinal_env}{perc_env:.1f}% vs média</p>", unsafe_allow_html=True)
+            with ca3:
+                st.metric("👥 Meta Equipe (Semanal)", f"{meta_equipe_semana:.1f}")
+                st.markdown("<p class='subtext-chamativo' style='color: #ffaa00;'>🏆 Média Despachos + 30%</p>", unsafe_allow_html=True)
+            with ca4:
+                st.metric("👤 Meta Individual (Semanal)", f"{meta_individual_semana:.1f}")
+                st.markdown("<p class='subtext-chamativo' style='color: #ffaa00;'>🏃‍♂️ Divisão por 4 Orçamentistas</p>", unsafe_allow_html=True)
+
+            st.markdown("---")
+            st.subheader("📈 Tendência Diária do Período Filtrado")
+            rec_g = df_raw.groupby('RECEBIDO').size().rename('Recebidos')
+            desp_g = df_raw.groupby('DESPACHADO').size().rename('Despachados')
+            env_g = df_raw[status_f.str.contains('ok', na=False)].groupby('ENVIADO').size().rename('Enviados')
+            
+            df_chart_diario = pd.concat([rec_g, desp_g, env_g], axis=1).fillna(0).astype(int).sort_index()
+            st.line_chart(df_chart_diario.loc[inicio:fim])
+
+            st.markdown("---")
+            st.subheader("📊 Histórico Geral de Produção (Consolidado Semanal - A partir de 2026)")
+            
+            df_semanal = df_raw.copy()
+            df_semanal['RECEBIDO'] = pd.to_datetime(df_semanal['RECEBIDO'])
+            df_semanal['DESPACHADO'] = pd.to_datetime(df_semanal['DESPACHADO'])
+            df_semanal['ENVIADO'] = pd.to_datetime(df_semanal['ENVIADO'])
+            
+            df_semanal['Semana_Recebido'] = df_semanal['RECEBIDO'].apply(get_iso_week_label)
+            df_semanal['Semana_Despachado'] = df_semanal['DESPACHADO'].apply(get_iso_week_label)
+            df_semanal['Semana_Enviado'] = df_semanal['ENVIADO'].apply(get_iso_week_label)
+            mask_cancelados_geral = status_f.str.contains('cancelad', na=False)
+            
+            rec_semana = df_semanal[df_semanal['RECEBIDO'].dt.year >= 2026].groupby('Semana_Recebido').size().rename('Recebidos')
+            desp_semana = df_semanal[df_semanal['DESPACHADO'].dt.year >= 2026].groupby('Semana_Despachado').size().rename('Despachados')
+            env_semana = df_semanal[(status_f.str.contains('ok', na=False)) & (df_semanal['ENVIADO'].dt.year >= 2026)].groupby('Semana_Enviado').size().rename('Enviados')
+            canc_semana = df_semanal[mask_cancelados_geral & (df_semanal['RECEBIDO'].dt.year >= 2026)].groupby('Semana_Recebido').size().rename('Cancelados')
+
+            df_chart_semanal = pd.concat([rec_semana, desp_semana, env_semana, canc_semana], axis=1).fillna(0).astype(int)
+            
+            if not df_chart_semanal.empty:
+                df_chart_semanal['sort_key'] = df_chart_semanal.index.str[-4:] + df_chart_semanal.index.str[5:7]
+                df_chart_semanal = df_chart_semanal.sort_values('sort_key').drop(columns=['sort_key'])
+
+                fig = px.line(df_chart_semanal, x=df_chart_semanal.index, y=['Recebidos', 'Despachados', 'Enviados', 'Cancelados'],
+                              labels={'value': 'Quantidade de Projetos', 'index': 'Semanas', 'variable': 'Métricas'},
+                              color_discrete_map={'Recebidos': '#1f77b4', 'Despachados': '#ff7f0e', 'Enviados': '#2ca02c', 'Cancelados': '#d62728'})
+                fig.update_layout(plot_bgcolor='#0e1117', paper_bgcolor='#0e1117', font_color='#ffffff')
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("Nenhum dado encontrado para o ano de 2026 ou posterior.")
+
+            st.markdown("---")
+            st.subheader("📋 Detalhamento dos Projetos Ativos")
+            df_table = df_raw[(df_raw['RECEBIDO'] >= inicio) | (df_raw['DESPACHADO'] >= inicio)]
+            st.dataframe(df_table, use_container_width=True)
+
+    # ==========================================
+    # ABA 2: ANÁLISE INDIVIDUAL (NOVA TELA)
+    # ==========================================
+    with tab_individual:
+        st.subheader("🧑‍💼 Desempenho por Orçamentista")
         
-        # --- CÁLCULOS DO PERÍODO SELECIONADO ---
-        mask_desp = (df_raw['DESPACHADO'] >= inicio) & (df_raw['DESPACHADO'] <= fim)
-        total_despachados = df_raw[mask_desp].shape[0]
-
-        mask_env = (df_raw['ENVIADO'] >= inicio) & (df_raw['ENVIADO'] <= fim) & (status_f.str.contains('ok', na=False))
-        total_enviados = df_raw[mask_env].shape[0]
-
-        mask_canc = (df_raw['RECEBIDO'] >= inicio) & (df_raw['RECEBIDO'] <= fim) & (status_f.str.contains('cancelad', na=False))
-        total_cancelados = df_raw[mask_canc].shape[0]
-
-        taxa_conversao = (total_enviados / total_despachados) * 100 if total_despachados > 0 else 0.0
-        taxa_str = f"{taxa_conversao:.1f}%"
-
-        # --- CÁLCULOS DO TRIMESTRE FECHADO ---
-        mask_desp_tri = (df_raw['DESPACHADO'] >= inicio_tri) & (df_raw['DESPACHADO'] <= fim_tri)
-        total_desp_tri = df_raw[mask_desp_tri].shape[0]
-
-        mask_env_tri = (df_raw['ENVIADO'] >= inicio_tri) & (df_raw['ENVIADO'] <= fim_tri) & (status_f.str.contains('ok', na=False))
-        total_env_tri = df_raw[mask_env_tri].shape[0]
-
-        media_desp_semana = total_desp_tri / semanas_tri if semanas_tri > 0 else 0
-        media_env_semana = total_env_tri / semanas_tri if semanas_tri > 0 else 0
-
-        # --- CÁLCULO DE CRESCIMENTO ---
-        perc_desp = ((total_despachados - media_desp_semana) / media_desp_semana) * 100 if media_desp_semana > 0 else 0
-        perc_env = ((total_enviados - media_env_semana) / media_env_semana) * 100 if media_env_semana > 0 else 0
-
-        classe_desp = "subtext-chamativo" if perc_desp >= 0 else "subtext-alerta"
-        sinal_desp = "+" if perc_desp >= 0 else ""
+        # ⚠️ ALERTA: Substitua 'RESPONSAVEL' pelo nome exato da sua coluna no banco de dados
+        COLUNA_NOME = 'RESPONSAVEL' 
         
-        classe_env = "subtext-chamativo" if perc_env >= 0 else "subtext-alerta"
-        sinal_env = "+" if perc_env >= 0 else ""
-
-        meta_equipe_semana = media_desp_semana * 1.30
-        meta_individual_semana = meta_equipe_semana / 4
-
-        # Renderização dos Cards
-        st.subheader(f"🔍 Análise do Período Filtrado")
-        st.write(f"De **{inicio.strftime('%d/%m/%Y')}** até **{fim.strftime('%d/%m/%Y')}**")
-
-        c1, c2, c3, c4 = st.columns(4)
-        with c1: st.metric("🚛 Despachados", total_despachados)
-        with c2: st.metric("✅ Enviados (OK)", total_enviados)
-        with c3: st.metric("📊 Enviados Vs. Despachados", taxa_str)
-        with c4: st.metric("🚫 Cancelados", total_cancelados)
-
-        st.markdown("<br>", unsafe_allow_html=True)
-        
-        meses = {1: 'Jan', 2: 'Fev', 3: 'Mar', 4: 'Abr', 5: 'Mai', 6: 'Jun', 
-                 7: 'Jul', 8: 'Ago', 9: 'Set', 10: 'Out', 11: 'Nov', 12: 'Dez'}
-        texto_trimestre = f"{meses[inicio_tri.month]} a {meses[fim_tri.month]}/{fim_tri.year}"
-        
-        st.subheader(f"🎯 Desempenho e Metas (Base Meses Fechados: {texto_trimestre})")
-        
-        ca1, ca2, ca3, ca4 = st.columns(4)
-        with ca1:
-            st.metric("🏭 Média Despachos / Sem", f"{media_desp_semana:.1f}")
-            st.markdown(f"<p class='{classe_desp}'>⚡ Período: {sinal_desp}{perc_desp:.1f}% vs média</p>", unsafe_allow_html=True)
-        with ca2:
-            st.metric("📈 Média Envios / Sem", f"{media_env_semana:.1f}")
-            st.markdown(f"<p class='{classe_env}'>⚡ Período: {sinal_env}{perc_env:.1f}% vs média</p>", unsafe_allow_html=True)
-        with ca3:
-            st.metric("👥 Meta Equipe (Semanal)", f"{meta_equipe_semana:.1f}")
-            st.markdown("<p class='subtext-chamativo' style='color: #ffaa00;'>🏆 Média Despachos + 30%</p>", unsafe_allow_html=True)
-        with ca4:
-            st.metric("👤 Meta Individual (Semanal)", f"{meta_individual_semana:.1f}")
-            st.markdown("<p class='subtext-chamativo' style='color: #ffaa00;'>🏃‍♂️ Divisão por 4 Orçamentistas</p>", unsafe_allow_html=True)
-
-        st.markdown("---")
-
-        st.subheader("📈 Tendência Diária do Período Filtrado")
-        rec_g = df_raw.groupby('RECEBIDO').size().rename('Recebidos')
-        desp_g = df_raw.groupby('DESPACHADO').size().rename('Despachados')
-        env_g = df_raw[status_f.str.contains('ok', na=False)].groupby('ENVIADO').size().rename('Enviados')
-        
-        df_chart_diario = pd.concat([rec_g, desp_g, env_g], axis=1).fillna(0).astype(int).sort_index()
-        st.line_chart(df_chart_diario.loc[inicio:fim])
-
-        # ==========================================
-        # 4. GRÁFICO SEMANAL FIXO (2026 EM DIANTE)
-        # ==========================================
-        st.markdown("---")
-        st.subheader("📊 Histórico Geral de Produção (Consolidado Semanal - A partir de 2026)")
-        
-        df_semanal = df_raw.copy()
-        
-        # Filtro de Ano: Manter apenas registros de 2026 ou superior em pelo menos uma das datas
-        # Convertendo para datetime se não for
-        df_semanal['RECEBIDO'] = pd.to_datetime(df_semanal['RECEBIDO'])
-        df_semanal['DESPACHADO'] = pd.to_datetime(df_semanal['DESPACHADO'])
-        df_semanal['ENVIADO'] = pd.to_datetime(df_semanal['ENVIADO'])
-        
-        # Criando as labels
-        df_semanal['Semana_Recebido'] = df_semanal['RECEBIDO'].apply(get_iso_week_label)
-        df_semanal['Semana_Despachado'] = df_semanal['DESPACHADO'].apply(get_iso_week_label)
-        df_semanal['Semana_Enviado'] = df_semanal['ENVIADO'].apply(get_iso_week_label)
-        
-        mask_cancelados_geral = status_f.str.contains('cancelad', na=False)
-        
-        # Agrupamentos já filtrando por ano >= 2026 no momento do agrupamento
-        rec_semana = df_semanal[df_semanal['RECEBIDO'].dt.year >= 2026].groupby('Semana_Recebido').size().rename('Recebidos')
-        desp_semana = df_semanal[df_semanal['DESPACHADO'].dt.year >= 2026].groupby('Semana_Despachado').size().rename('Despachados')
-        env_semana = df_semanal[(status_f.str.contains('ok', na=False)) & (df_semanal['ENVIADO'].dt.year >= 2026)].groupby('Semana_Enviado').size().rename('Enviados')
-        canc_semana = df_semanal[mask_cancelados_geral & (df_semanal['RECEBIDO'].dt.year >= 2026)].groupby('Semana_Recebido').size().rename('Cancelados')
-
-        df_chart_semanal = pd.concat([rec_semana, desp_semana, env_semana, canc_semana], axis=1).fillna(0).astype(int)
-        
-        if not df_chart_semanal.empty:
-            df_chart_semanal['sort_key'] = df_chart_semanal.index.str[-4:] + df_chart_semanal.index.str[5:7]
-            df_chart_semanal = df_chart_semanal.sort_values('sort_key').drop(columns=['sort_key'])
-
-            fig = px.line(df_chart_semanal, 
-                          x=df_chart_semanal.index, 
-                          y=['Recebidos', 'Despachados', 'Enviados', 'Cancelados'],
-                          labels={'value': 'Quantidade de Projetos', 'index': 'Semanas', 'variable': 'Métricas'},
-                          color_discrete_map={
-                              'Recebidos': '#1f77b4',     
-                              'Despachados': '#ff7f0e',   
-                              'Enviados': '#2ca02c',      
-                              'Cancelados': '#d62728'     
-                          })
-            fig.update_layout(plot_bgcolor='#0e1117', paper_bgcolor='#0e1117', font_color='#ffffff')
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.info("Nenhum dado encontrado para o ano de 2026 ou posterior.")
-
-        # ==========================================
-        # 5. TABELA DE DETALHAMENTO
-        # ==========================================
-        st.markdown("---")
-        st.subheader("📋 Detalhamento dos Projetos Ativos (Período Filtrado)")
-        df_table = df_raw[(df_raw['RECEBIDO'] >= inicio) | (df_raw['DESPACHADO'] >= inicio)]
-        st.dataframe(df_table, use_container_width=True)
+        if isinstance(periodo, tuple) and len(periodo) == 2:
+            inicio, fim = periodo
+            st.write(f"Análise baseada no período de **{inicio.strftime('%d/%m/%Y')}** até **{fim.strftime('%d/%m/%Y')}**")
+            
+            if COLUNA_NOME in df_raw.columns:
+                # Pegar nomes únicos e colocar em ordem alfabética
+                responsaveis = sorted(df_raw[COLUNA_NOME].dropna().unique())
+                
+                for nome in responsaveis:
+                    # Filtra o dataframe só para essa pessoa
+                    df_pessoa = df_raw[df_raw[COLUNA_NOME] == nome]
+                    
+                    # Cálculos individuais do período filtrado
+                    rec_ind = df_pessoa[(df_pessoa['RECEBIDO'] >= inicio) & (df_pessoa['RECEBIDO'] <= fim)].shape[0]
+                    env_ind = df_pessoa[(df_pessoa['ENVIADO'] >= inicio) & (df_pessoa['ENVIADO'] <= fim) & (df_pessoa['FIM / AÇÃO'].astype(str).str.lower().str.contains('ok'))].shape[0]
+                    canc_ind = df_pessoa[(df_pessoa['RECEBIDO'] >= inicio) & (df_pessoa['RECEBIDO'] <= fim) & (df_pessoa['FIM / AÇÃO'].astype(str).str.lower().str.contains('cancelad'))].shape[0]
+                    
+                    taxa_ind = (env_ind / rec_ind) * 100 if rec_ind > 0 else 0.0
+                    
+                    # Cria um retângulo (borda) para cada pessoa
+                    with st.container(border=True):
+                        st.markdown(f"### {nome}")
+                        
+                        # Divide o retângulo: 70% para os cards, 30% para o gráfico
+                        col_cards, col_grafico = st.columns([7, 3])
+                        
+                        with col_cards:
+                            # 4 Cards individuais
+                            mc1, mc2, mc3, mc4 = st.columns(4)
+                            mc1.metric("Recebidos", rec_ind)
+                            mc2.metric("Enviados", env_ind)
+                            mc3.metric("Cancelados", canc_ind)
+                            mc4.metric("Taxa de Envio", f"{taxa_ind:.1f}%")
+                            
+                        with col_grafico:
+                            # Mini Gráfico de Barras
+                            df_graf_ind = pd.DataFrame({
+                                'Status': ['Recebidos', 'Enviados', 'Cancelados'],
+                                'Qtd': [rec_ind, env_ind, canc_ind]
+                            })
+                            
+                            fig_bar = px.bar(
+                                df_graf_ind, 
+                                x='Status', 
+                                y='Qtd', 
+                                color='Status',
+                                color_discrete_map={
+                                    'Recebidos': '#2ca02c', # Verde
+                                    'Enviados': '#1f77b4',  # Azul
+                                    'Cancelados': '#d62728' # Vermelho
+                                },
+                                height=150 # Mantém o gráfico pequeno para caber do lado
+                            )
+                            # Remove legendas e margens para o gráfico ficar "limpo" dentro do retângulo
+                            fig_bar.update_layout(
+                                margin=dict(l=0, r=0, t=20, b=0), 
+                                showlegend=False, 
+                                plot_bgcolor='rgba(0,0,0,0)', 
+                                paper_bgcolor='rgba(0,0,0,0)',
+                                xaxis_title=None,
+                                yaxis_title=None
+                            )
+                            st.plotly_chart(fig_bar, use_container_width=True)
+            else:
+                st.error(f"Coluna '{COLUNA_NOME}' não encontrada no banco de dados. Verifique o nome exato da coluna com o nome dos responsáveis.")
 
 except Exception as e:
     st.error(f"Erro ao carregar o dashboard: {e}")
