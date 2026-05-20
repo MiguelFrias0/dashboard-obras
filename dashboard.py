@@ -41,6 +41,8 @@ st.markdown("""
     /* Estilização para as Abas */
     .stTabs [data-baseweb="tab-list"] { gap: 24px; }
     .stTabs [data-baseweb="tab"] { height: 50px; white-space: pre-wrap; font-size: 18px; }
+    /* Estilização do Expander */
+    .streamlit-expanderHeader { font-size: 18px; font-weight: bold; color: #ffffff; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -99,11 +101,17 @@ try:
 
     st.title("🏗️ Dashboard de Gestão - Fase 2")
     
-    # NOME DA COLUNA DOS ANALISTAS (AJUSTE SE NECESSÁRIO)
     COLUNA_NOME = 'RESPONSAVEL'
+    COLUNA_CAMPO = 'PROFISSIONAL CAMPO'
+    COLUNA_CLIENTE = 'CLIENTE'
     
-    # CRIANDO AS TRÊS TELAS (ABAS)
-    tab_geral, tab_individual, tab_time = st.tabs(["📊 Visão Geral", "👤 Análise Individual", "👥 Análise do Time"])
+    # CRIANDO AS QUATRO TELAS (ABAS)
+    tab_geral, tab_individual, tab_time, tab_campo = st.tabs([
+        "📊 Visão Geral", 
+        "👤 Análise Individual", 
+        "👥 Análise do Time", 
+        "👷 Profissionais de Campo"
+    ])
 
     # ==========================================
     # ABA 1: VISÃO GERAL
@@ -213,8 +221,6 @@ try:
                               color_discrete_map={'Recebidos': '#1f77b4', 'Despachados': '#ff7f0e', 'Enviados': '#2ca02c', 'Cancelados': '#d62728'})
                 fig.update_layout(plot_bgcolor='#0e1117', paper_bgcolor='#0e1117', font_color='#ffffff')
                 st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.info("Nenhum dado encontrado para o ano de 2026 ou posterior.")
 
             st.markdown("---")
             st.subheader("📋 Detalhamento dos Projetos Ativos")
@@ -233,10 +239,8 @@ try:
             
             if COLUNA_NOME in df_raw.columns:
                 responsaveis = sorted(df_raw[COLUNA_NOME].dropna().unique())
-                
                 for nome in responsaveis:
                     df_pessoa = df_raw[df_raw[COLUNA_NOME] == nome]
-                    
                     rec_ind = df_pessoa[(df_pessoa['RECEBIDO'] >= inicio) & (df_pessoa['RECEBIDO'] <= fim)].shape[0]
                     env_ind = df_pessoa[(df_pessoa['ENVIADO'] >= inicio) & (df_pessoa['ENVIADO'] <= fim) & (df_pessoa['FIM / AÇÃO'].astype(str).str.lower().str.contains('ok'))].shape[0]
                     canc_ind = df_pessoa[(df_pessoa['RECEBIDO'] >= inicio) & (df_pessoa['RECEBIDO'] <= fim) & (df_pessoa['FIM / AÇÃO'].astype(str).str.lower().str.contains('cancelad'))].shape[0]
@@ -246,28 +250,22 @@ try:
                     with st.container(border=True):
                         st.markdown(f"### {nome}")
                         col_cards, col_grafico = st.columns([7, 3])
-                        
                         with col_cards:
                             mc1, mc2, mc3, mc4 = st.columns(4)
                             mc1.metric("Recebidos", rec_ind)
                             mc2.metric("Enviados", env_ind)
                             mc3.metric("Cancelados", canc_ind)
                             mc4.metric("Taxa de Envio", f"{taxa_ind:.1f}%")
-                            
                         with col_grafico:
                             df_graf_ind = pd.DataFrame({'Status': ['Recebidos', 'Enviados', 'Cancelados'], 'Qtd': [rec_ind, env_ind, canc_ind]})
-                            fig_bar = px.bar(
-                                df_graf_ind, x='Status', y='Qtd', color='Status',
-                                color_discrete_map={'Recebidos': '#2ca02c', 'Enviados': '#1f77b4', 'Cancelados': '#d62728'},
-                                height=150
-                            )
+                            fig_bar = px.bar(df_graf_ind, x='Status', y='Qtd', color='Status', color_discrete_map={'Recebidos': '#2ca02c', 'Enviados': '#1f77b4', 'Cancelados': '#d62728'}, height=150)
                             fig_bar.update_layout(margin=dict(l=0, r=0, t=20, b=0), showlegend=False, plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', xaxis_title=None, yaxis_title=None)
                             st.plotly_chart(fig_bar, use_container_width=True)
             else:
                 st.error(f"Coluna '{COLUNA_NOME}' não encontrada.")
 
     # ==========================================
-    # ABA 3: ANÁLISE DO TIME (GRÁFICO FIXO 2026)
+    # ABA 3: ANÁLISE DO TIME
     # ==========================================
     with tab_time:
         st.subheader("👥 Comparativo do Time (Acumulado de 2026)")
@@ -275,45 +273,71 @@ try:
         
         if COLUNA_NOME in df_raw.columns:
             data_corte = pd.to_datetime('2026-01-01').date()
-            
-            # Filtro base >= 2026
             df_rec_2026 = df_raw[df_raw['RECEBIDO'] >= data_corte]
             df_env_2026 = df_raw[(df_raw['ENVIADO'] >= data_corte) & (status_f.str.contains('ok', na=False))]
             
-            # Agrupamento por Analista
             rec_por_analista = df_rec_2026.groupby(COLUNA_NOME).size().rename('Recebidos')
             env_por_analista = df_env_2026.groupby(COLUNA_NOME).size().rename('Enviados')
             
-            # Consolidação do dataframe
             df_time_chart = pd.concat([rec_por_analista, env_por_analista], axis=1).fillna(0).astype(int).reset_index()
             
             if not df_time_chart.empty:
-                # Criação do gráfico agrupado (barmode='group')
-                fig_time = px.bar(
-                    df_time_chart,
-                    x=COLUNA_NOME,
-                    y=['Recebidos', 'Enviados'],
-                    barmode='group',
-                    labels={'value': 'Total de Projetos', COLUNA_NOME: 'Orçamentistas', 'variable': 'Status'},
-                    color_discrete_map={
-                        'Recebidos': '#2ca02c', # Verde para Recebidos
-                        'Enviados': '#1f77b4'   # Azul para Enviados
-                    }
-                )
-                
-                fig_time.update_layout(
-                    plot_bgcolor='#0e1117', 
-                    paper_bgcolor='#0e1117', 
-                    font_color='#ffffff',
-                    xaxis_title="Equipe",
-                    yaxis_title="Volume Acumulado"
-                )
-                
+                fig_time = px.bar(df_time_chart, x=COLUNA_NOME, y=['Recebidos', 'Enviados'], barmode='group', labels={'value': 'Total de Projetos', COLUNA_NOME: 'Orçamentistas', 'variable': 'Status'}, color_discrete_map={'Recebidos': '#2ca02c', 'Enviados': '#1f77b4'})
+                fig_time.update_layout(plot_bgcolor='#0e1117', paper_bgcolor='#0e1117', font_color='#ffffff', xaxis_title="Equipe", yaxis_title="Volume Acumulado")
                 st.plotly_chart(fig_time, use_container_width=True)
-            else:
-                st.info("Nenhum dado encontrado a partir de 01/01/2026 para compor o gráfico do time.")
+
+    # ==========================================
+    # ABA 4: PROFISSIONAIS DE CAMPO (EXPANDER FIXO)
+    # ==========================================
+    with tab_campo:
+        st.subheader("👷 Alocação e Distribuição por Profissional de Campo")
+        st.write("Visão do volume total do banco de dados (ignorando filtros de data). Clique no profissional para abrir os detalhes.")
+        st.markdown("---")
+        
+        if COLUNA_CAMPO in df_raw.columns and COLUNA_CLIENTE in df_raw.columns:
+            # Pega lista única de profissionais de campo, ignorando campos vazios
+            df_validos = df_raw.dropna(subset=[COLUNA_CAMPO])
+            profissionais = sorted([p for p in df_validos[COLUNA_CAMPO].unique() if str(p).strip() != ""])
+            
+            for prof in profissionais:
+                # Filtra a base inteira para o profissional específico
+                df_prof = df_validos[df_validos[COLUNA_CAMPO] == prof]
+                total_projetos = len(df_prof)
+                
+                # Cria a barra clicável (Expander)
+                with st.expander(f"🛠️ {prof} | Total Geral: {total_projetos} projetos"):
+                    
+                    # Calcula quantos projetos são de cada cliente
+                    contagem_clientes = df_prof[COLUNA_CLIENTE].value_counts().reset_index()
+                    contagem_clientes.columns = ['Cliente', 'Quantidade de Projetos']
+                    
+                    col1, col2 = st.columns([1, 1])
+                    
+                    with col1:
+                        st.markdown("**Distribuição por Cliente:**")
+                        # Mostra a tabela sem o índice lateral
+                        st.dataframe(contagem_clientes, hide_index=True, use_container_width=True)
+                        
+                    with col2:
+                        # Gráfico de Rosca (Donut) para os clientes
+                        if not contagem_clientes.empty:
+                            fig_pie = px.pie(
+                                contagem_clientes, 
+                                values='Quantidade de Projetos', 
+                                names='Cliente', 
+                                hole=0.4, # Deixa com formato de rosca
+                                color_discrete_sequence=px.colors.qualitative.Set2
+                            )
+                            fig_pie.update_layout(
+                                showlegend=True, 
+                                margin=dict(t=0, b=0, l=0, r=0),
+                                plot_bgcolor='rgba(0,0,0,0)', 
+                                paper_bgcolor='rgba(0,0,0,0)',
+                                font_color='#ffffff'
+                            )
+                            st.plotly_chart(fig_pie, use_container_width=True)
         else:
-            st.error(f"Coluna '{COLUNA_NOME}' não encontrada no banco de dados.")
+            st.error(f"Certifique-se de que as colunas '{COLUNA_CAMPO}' e '{COLUNA_CLIENTE}' existem na sua base de dados.")
 
 except Exception as e:
     st.error(f"Erro ao carregar o dashboard: {e}")
