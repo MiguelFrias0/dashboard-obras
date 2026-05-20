@@ -99,7 +99,7 @@ try:
     dias_tri = (fim_tri - inicio_tri).days + 1
     semanas_tri = dias_tri / 7 
 
-    st.title("🏗️ Dashboard de Gestão - Fase 2")
+    st.title("🏗️ Dashboard de Gestão")
     
     COLUNA_NOME = 'RESPONSAVEL'
     COLUNA_CAMPO = 'PROFISSIONAL CAMPO'
