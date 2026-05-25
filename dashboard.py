@@ -169,19 +169,14 @@ try:
             st.markdown("---")
             st.subheader("📈 Tendência de Movimentação")
             
-            # AGRUPAMENTO ORIGINAL
             rec_g = df_raw.groupby('RECEBIDO').size().rename('Recebidos')
             desp_g = df_raw.groupby('DESPACHADO').size().rename('Despachados')
             env_g = df_raw[status_f.str.contains('ok', na=False)].groupby('ENVIADO').size().rename('Enviados')
             
-            # ==========================================
-            # CORREÇÃO APLICADA AQUI (SORT_INDEX RESTAURADO)
-            # ==========================================
             df_chart = pd.concat([rec_g, desp_g, env_g], axis=1).fillna(0).astype(int)
             df_chart = df_chart[df_chart.index.notna()].sort_index()
             
             try:
-                # Fatiamento seguro com o índice ordenado
                 df_chart = df_chart.loc[inicio:fim]
             except KeyError:
                 df_chart = pd.DataFrame(columns=['Recebidos', 'Despachados', 'Enviados'])
@@ -195,13 +190,11 @@ try:
                                    category_orders={'Métrica': ['Recebidos', 'Despachados', 'Enviados']},
                                    template="plotly_dark")
                 
-                # Formatando os números e o hover
                 fig_evol.update_traces(textposition='top center', texttemplate='%{text:.0f}') 
                 fig_evol.update_traces(hovertemplate='<b>%{y}</b>') 
                 
-                # Formatando o Layout (Sem horas, só os dias)
                 fig_evol.update_xaxes(
-                    tickformat="%d %b", # Dia e Mês
+                    tickformat="%d %b", 
                     dtick="D1", 
                     title_text=""
                 )
@@ -212,7 +205,8 @@ try:
                     margin=dict(t=20, b=0, l=0, r=0)
                 )
                 
-                st.plotly_chart(fig_evol, use_container_width=True)
+                # ADICIONADA A KEY AQUI
+                st.plotly_chart(fig_evol, use_container_width=True, key="grafico_area_diario")
             else:
                 st.info(f"Nenhuma movimentação registrada no período de {inicio.strftime('%d/%m/%Y')} a {fim.strftime('%d/%m/%Y')}.")
 
@@ -246,7 +240,9 @@ try:
                               labels={'value': 'Quantidade de Projetos', 'index': 'Semanas', 'variable': 'Métricas'},
                               color_discrete_map={'Recebidos': '#00d4ff', 'Despachados': '#ffaa00', 'Enviados': '#00ffcc', 'Cancelados': '#ff4b4b'})
                 fig.update_layout(plot_bgcolor='#0b0e14', paper_bgcolor='#0b0e14', font_color='#ffffff')
-                st.plotly_chart(fig, use_container_width=True)
+                
+                # ADICIONADA A KEY AQUI
+                st.plotly_chart(fig, use_container_width=True, key="grafico_linha_semanal")
 
             st.markdown("---")
             st.subheader("📋 Detalhamento dos Projetos Ativos")
@@ -286,7 +282,9 @@ try:
                           color='Qtd', color_continuous_scale='GnBu',
                           template="plotly_dark")
         fig_time.update_layout(yaxis={'categoryorder':'total ascending'}, plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
-        st.plotly_chart(fig_time, use_container_width=True)
+        
+        # ADICIONADA A KEY AQUI
+        st.plotly_chart(fig_time, use_container_width=True, key="grafico_barra_time")
 
     # ==========================================
     # ABA 4: CAMPO
@@ -307,7 +305,9 @@ try:
                 fig_pie = px.pie(c_data, values='Qtd', names='Cliente', hole=.5,
                                  color_discrete_sequence=px.colors.qualitative.Pastel)
                 fig_pie.update_layout(margin=dict(t=0, b=0, l=0, r=0), showlegend=False)
-                col_g.plotly_chart(fig_pie, use_container_width=True)
+                
+                # ADICIONADA A KEY DINÂMICA AQUI (O MOTIVO DO ERRO)
+                col_g.plotly_chart(fig_pie, use_container_width=True, key=f"pie_{prof}")
 
 except Exception as e:
     st.error(f"Erro no Dashboard: {e}")
