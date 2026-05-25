@@ -3,14 +3,12 @@ import pandas as pd
 from supabase import create_client, Client
 from datetime import datetime, timedelta
 import plotly.express as px
-import plotly.graph_objects as go
 
 # ==========================================
 # 1. CONFIGURAÇÃO E IDENTIDADE VISUAL DARK-PREMIUM
 # ==========================================
 st.set_page_config(page_title="Gestão de Projetos | High-End", layout="wide")
 
-# CSS Avançado para mudar a cara do Streamlit
 st.markdown("""
     <style>
     /* Fundo principal e Sidebar */
@@ -92,13 +90,12 @@ def get_iso_week_label(date_obj):
     return f"Sem. {iso_week:02d} - {iso_year}"
 
 # ==========================================
-# 2. LÓGICA DE NEGÓCIO (INTACTA)
+# 2. LÓGICA DE NEGÓCIO
 # ==========================================
 try:
     df_raw = load_data()
     COLUNA_NOME, COLUNA_CAMPO, COLUNA_CLIENTE = 'RESPONSAVEL', 'PROFISSIONAL CAMPO', 'CLIENTE'
     
-    # Tratamento de Strings
     for col in [COLUNA_NOME, COLUNA_CAMPO]:
         if col in df_raw.columns:
             df_raw[col] = df_raw[col].astype(str).str.strip().str.title()
@@ -109,18 +106,15 @@ try:
     segunda = hoje - timedelta(days=hoje.weekday())
     domingo = segunda + timedelta(days=6)
 
-    # Sidebar
-    st.sidebar.image("https://cdn-icons-png.flaticon.com/512/1087/1087815.png", width=80) # Placeholder para seu logo
+    st.sidebar.image("https://cdn-icons-png.flaticon.com/512/1087/1087815.png", width=80)
     st.sidebar.title("Configurações")
     periodo = st.sidebar.date_input("Período de Análise", value=(segunda, domingo), format="DD/MM/YYYY")
 
-    # Cálculos de Trimestre (Baseline de Meta)
     hoje_pd = pd.to_datetime(hoje)
     fim_tri = (hoje_pd.replace(day=1) - pd.Timedelta(days=1)).date()
     inicio_tri = (hoje_pd.replace(day=1) - pd.DateOffset(months=3)).date()
     semanas_tri = ((fim_tri - inicio_tri).days + 1) / 7
 
-    # Cabeçalho Principal
     st.title("🏗️ Gestão de Projetos")
     st.markdown(f"<p style='color: #9ca3af; margin-top: -15px;'>Atualizado em: {datetime.now().strftime('%d/%m %H:%M')}</p>", unsafe_allow_html=True)
     
@@ -133,7 +127,6 @@ try:
         if isinstance(periodo, tuple) and len(periodo) == 2:
             inicio, fim = periodo
             
-            # Filtros de Dados
             m_desp = (df_raw['DESPACHADO'] >= inicio) & (df_raw['DESPACHADO'] <= fim)
             m_env = (df_raw['ENVIADO'] >= inicio) & (df_raw['ENVIADO'] <= fim) & (status_f.str.contains('ok', na=False))
             m_canc = (df_raw['RECEBIDO'] >= inicio) & (df_raw['RECEBIDO'] <= fim) & (status_f.str.contains('cancelad', na=False))
@@ -141,7 +134,6 @@ try:
             t_desp, t_env, t_canc = df_raw[m_desp].shape[0], df_raw[m_env].shape[0], df_raw[m_canc].shape[0]
             taxa = (t_env / t_desp * 100) if t_desp > 0 else 0
 
-            # LINHA 1: MÉTRICAS ATUAIS
             st.subheader("Filtro Atual")
             c1, c2, c3, c4 = st.columns(4)
             c1.metric("Despachados", t_desp)
@@ -149,12 +141,11 @@ try:
             c3.metric("Conversão", f"{taxa:.1f}%")
             c4.metric("Cancelados", t_canc)
 
-            # LINHA 2: MÉDIAS E METAS
             m_desp_tri = (df_raw['DESPACHADO'] >= inicio_tri) & (df_raw['DESPACHADO'] <= fim_tri)
             m_env_tri = (df_raw['ENVIADO'] >= inicio_tri) & (df_raw['ENVIADO'] <= fim_tri) & (status_f.str.contains('ok', na=False))
             
-            media_desp = df_raw[m_desp_tri].shape[0] / semanas_tri
-            media_env = df_raw[m_env_tri].shape[0] / semanas_tri
+            media_desp = df_raw[m_desp_tri].shape[0] / semanas_tri if semanas_tri > 0 else 0
+            media_env = df_raw[m_env_tri].shape[0] / semanas_tri if semanas_tri > 0 else 0
             
             p_desp = ((t_desp - media_desp) / media_desp * 100) if media_desp > 0 else 0
             
@@ -178,60 +169,92 @@ try:
             st.markdown("---")
             st.subheader("📈 Tendência de Movimentação")
             
-            # Mantenha os DataFrames originais ( wide-form )
+            # AGRUPAMENTO ORIGINAL
             rec_g = df_raw.groupby('RECEBIDO').size().rename('Recebidos')
             desp_g = df_raw.groupby('DESPACHADO').size().rename('Despachados')
             env_g = df_raw[status_f.str.contains('ok', na=False)].groupby('ENVIADO').size().rename('Enviados')
             
-            # Mantenha o DataFrame df_chart original fatiado
-            df_chart = pd.concat([rec_g, desp_g, env_g], axis=1).fillna(0).loc[inicio:fim]
+            # ==========================================
+            # CORREÇÃO APLICADA AQUI (SORT_INDEX RESTAURADO)
+            # ==========================================
+            df_chart = pd.concat([rec_g, desp_g, env_g], axis=1).fillna(0).astype(int)
+            df_chart = df_chart[df_chart.index.notna()].sort_index()
             
-            # --- [Início do Código de Gráfico Atualizado] ---
+            try:
+                # Fatiamento seguro com o índice ordenado
+                df_chart = df_chart.loc[inicio:fim]
+            except KeyError:
+                df_chart = pd.DataFrame(columns=['Recebidos', 'Despachados', 'Enviados'])
+
+            if not df_chart.empty:
+                df_chart_long = df_chart.reset_index().melt(id_vars='index', var_name='Métrica', value_name='Quantidade')
+                
+                fig_evol = px.area(df_chart_long, x='index', y='Quantidade', color='Métrica',
+                                   text='Quantidade',
+                                   color_discrete_map={'Recebidos': '#00d4ff', 'Despachados': '#ffaa00', 'Enviados': '#00ffcc'},
+                                   category_orders={'Métrica': ['Recebidos', 'Despachados', 'Enviados']},
+                                   template="plotly_dark")
+                
+                # Formatando os números e o hover
+                fig_evol.update_traces(textposition='top center', texttemplate='%{text:.0f}') 
+                fig_evol.update_traces(hovertemplate='<b>%{y}</b>') 
+                
+                # Formatando o Layout (Sem horas, só os dias)
+                fig_evol.update_xaxes(
+                    tickformat="%d %b", # Dia e Mês
+                    dtick="D1", 
+                    title_text=""
+                )
+                fig_evol.update_layout(
+                    plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, title_text=""),
+                    yaxis_title_text="",
+                    margin=dict(t=20, b=0, l=0, r=0)
+                )
+                
+                st.plotly_chart(fig_evol, use_container_width=True)
+            else:
+                st.info(f"Nenhuma movimentação registrada no período de {inicio.strftime('%d/%m/%Y')} a {fim.strftime('%d/%m/%Y')}.")
+
+            st.markdown("---")
+            st.subheader("📊 Histórico Geral de Produção (Consolidado Semanal - A partir de 2026)")
             
-            # 1. Reformate os dados para o formato longo (melt) para adicionar rótulos de texto de forma limpa
-            df_chart_long = df_chart.reset_index().melt(id_vars='index', var_name='Métrica', value_name='Quantidade')
+            df_semanal = df_raw.copy()
+            df_semanal['RECEBIDO'] = pd.to_datetime(df_semanal['RECEBIDO'])
+            df_semanal['DESPACHADO'] = pd.to_datetime(df_semanal['DESPACHADO'])
+            df_semanal['ENVIADO'] = pd.to_datetime(df_semanal['ENVIADO'])
             
-            # 2. Crie o gráfico de área usando o formato longo, com o argumento text para rótulos
-            fig_evol = px.area(df_chart_long, x='index', y='Quantidade', color='Métrica',
-                               text='Quantidade', # Mostra os números sobre as áreas
-                               color_discrete_map={'Recebidos': '#00d4ff', 'Despachados': '#ffaa00', 'Enviados': '#00ffcc'},
-                               category_orders={'Métrica': ['Recebidos', 'Despachados', 'Enviados']}, # Garante a ordem de empilhamento original
-                               template="plotly_dark")
+            df_semanal['Semana_Recebido'] = df_semanal['RECEBIDO'].apply(get_iso_week_label)
+            df_semanal['Semana_Despachado'] = df_semanal['DESPACHADO'].apply(get_iso_week_label)
+            df_semanal['Semana_Enviado'] = df_semanal['ENVIADO'].apply(get_iso_week_label)
+            mask_cancelados_geral = status_f.str.contains('cancelad', na=False)
             
-            # 3. Personalize os traços:
-            # - Posicionar rótulos de texto e formatar como número inteiro
-            fig_evol.update_traces(textposition='top center', texttemplate='%{text:.0f}') 
-            # - Personalizar o hover para remover o efeito cromático e mostrar apenas o número
-            fig_evol.update_traces(hovertemplate='<b>%{y}</b>') 
+            rec_semana = df_semanal[df_semanal['RECEBIDO'].dt.year >= 2026].groupby('Semana_Recebido').size().rename('Recebidos')
+            desp_semana = df_semanal[df_semanal['DESPACHADO'].dt.year >= 2026].groupby('Semana_Despachado').size().rename('Despachados')
+            env_semana = df_semanal[(status_f.str.contains('ok', na=False)) & (df_semanal['ENVIADO'].dt.year >= 2026)].groupby('Semana_Enviado').size().rename('Enviados')
+            canc_semana = df_semanal[mask_cancelados_geral & (df_semanal['RECEBIDO'].dt.year >= 2026)].groupby('Semana_Recebido').size().rename('Cancelados')
+
+            df_chart_semanal = pd.concat([rec_semana, desp_semana, env_semana, canc_semana], axis=1).fillna(0).astype(int)
             
-            # 4. Personalize o layout:
-            # - Configurar eixo X para mostrar apenas os dias (sem horas)
-            fig_evol.update_xaxes(
-                tickformat="%d %b, %Y", # Formato de data (ex: 11 May, 2026)
-                dtick="D1", # Marcas a cada dia
-                title_text="" # Ocultar título do eixo X "index"
-            )
-            # - Personalizar a legenda para o topo (manter visual original)
-            fig_evol.update_layout(
-                plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
-                legend=dict(
-                    orientation="h", # Horizontal
-                    yanchor="bottom", # Ancorar na parte inferior da legenda
-                    y=1.02, # Posição Y acima do gráfico
-                    xanchor="right", # Ancorar na parte direita da legenda
-                    x=1, # Posição X no canto direito
-                    title_text="" # Ocultar título da legenda "variable"
-                ),
-                yaxis_title_text="" # Ocultar título do eixo Y "value"
-            )
-            
-            # Exiba o gráfico atualizado
-            st.plotly_chart(fig_evol, use_container_width=True)
-            
-            # --- [Fim do Código de Gráfico Atualizado] ---
+            if not df_chart_semanal.empty:
+                df_chart_semanal = df_chart_semanal[df_chart_semanal.index.notna()]
+                df_chart_semanal.index = df_chart_semanal.index.astype(str)
+                df_chart_semanal['sort_key'] = df_chart_semanal.index.str[-4:] + df_chart_semanal.index.str[5:7]
+                df_chart_semanal = df_chart_semanal.sort_values('sort_key').drop(columns=['sort_key'])
+
+                fig = px.line(df_chart_semanal, x=df_chart_semanal.index, y=['Recebidos', 'Despachados', 'Enviados', 'Cancelados'],
+                              labels={'value': 'Quantidade de Projetos', 'index': 'Semanas', 'variable': 'Métricas'},
+                              color_discrete_map={'Recebidos': '#00d4ff', 'Despachados': '#ffaa00', 'Enviados': '#00ffcc', 'Cancelados': '#ff4b4b'})
+                fig.update_layout(plot_bgcolor='#0b0e14', paper_bgcolor='#0b0e14', font_color='#ffffff')
+                st.plotly_chart(fig, use_container_width=True)
+
+            st.markdown("---")
+            st.subheader("📋 Detalhamento dos Projetos Ativos")
+            df_table = df_raw[(df_raw['RECEBIDO'] >= inicio) | (df_raw['DESPACHADO'] >= inicio)]
+            st.dataframe(df_table, use_container_width=True)
 
     # ==========================================
-    # ABA 2: ANÁLISE INDIVIDUAL (INTACTA)
+    # ABA 2: ANÁLISE INDIVIDUAL
     # ==========================================
     with tab_individual:
         st.subheader("Análise por Orçamentista")
@@ -252,7 +275,7 @@ try:
                 st.markdown("<div style='height: 1px; background-color: #30363d; margin-bottom: 20px;'></div>", unsafe_allow_html=True)
 
     # ==========================================
-    # ABA 3: TIME (INTACTA)
+    # ABA 3: TIME
     # ==========================================
     with tab_time:
         st.subheader("Volume Acumulado 2026")
@@ -266,7 +289,7 @@ try:
         st.plotly_chart(fig_time, use_container_width=True)
 
     # ==========================================
-    # ABA 4: CAMPO (INTACTA)
+    # ABA 4: CAMPO
     # ==========================================
     with tab_campo:
         termo = st.text_input("🔍 Buscar Profissional", placeholder="Nome do parceiro...").upper()
