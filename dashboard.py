@@ -198,14 +198,24 @@ try:
                     dtick="D1", 
                     title_text=""
                 )
+                
+                # ==========================================
+                # CORREÇÃO APLICADA AQUI: LEGENDA MOVIDA PARA A ESQUERDA
+                # ==========================================
                 fig_evol.update_layout(
                     plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
-                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, title_text=""),
+                    legend=dict(
+                        orientation="h", 
+                        yanchor="bottom", 
+                        y=1.05, 
+                        xanchor="left", # Alinhado à esquerda
+                        x=0,            # Posição 0 (canto esquerdo)
+                        title_text=""
+                    ),
                     yaxis_title_text="",
-                    margin=dict(t=20, b=0, l=0, r=0)
+                    margin=dict(t=50, b=0, l=0, r=0) # Margem superior aumentada para 50
                 )
                 
-                # ADICIONADA A KEY AQUI
                 st.plotly_chart(fig_evol, use_container_width=True, key="grafico_area_diario")
             else:
                 st.info(f"Nenhuma movimentação registrada no período de {inicio.strftime('%d/%m/%Y')} a {fim.strftime('%d/%m/%Y')}.")
@@ -241,7 +251,6 @@ try:
                               color_discrete_map={'Recebidos': '#00d4ff', 'Despachados': '#ffaa00', 'Enviados': '#00ffcc', 'Cancelados': '#ff4b4b'})
                 fig.update_layout(plot_bgcolor='#0b0e14', paper_bgcolor='#0b0e14', font_color='#ffffff')
                 
-                # ADICIONADA A KEY AQUI
                 st.plotly_chart(fig, use_container_width=True, key="grafico_linha_semanal")
 
             st.markdown("---")
@@ -283,7 +292,6 @@ try:
                           template="plotly_dark")
         fig_time.update_layout(yaxis={'categoryorder':'total ascending'}, plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
         
-        # ADICIONADA A KEY AQUI
         st.plotly_chart(fig_time, use_container_width=True, key="grafico_barra_time")
 
     # ==========================================
@@ -306,7 +314,6 @@ try:
                                  color_discrete_sequence=px.colors.qualitative.Pastel)
                 fig_pie.update_layout(margin=dict(t=0, b=0, l=0, r=0), showlegend=False)
                 
-                # ADICIONADA A KEY DINÂMICA AQUI (O MOTIVO DO ERRO)
                 col_g.plotly_chart(fig_pie, use_container_width=True, key=f"pie_{prof}")
 
 except Exception as e:
