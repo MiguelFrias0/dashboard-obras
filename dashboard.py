@@ -102,7 +102,8 @@ try:
     df_raw[COLUNA_CAMPO] = df_raw[COLUNA_CAMPO].str.upper()
 
     status_f = df_raw['FIM / AÇÃO'].astype(str).str.lower().str.strip()
-    hoje = (datetime.utcnow() - timedelta(hours=3)).date()
+    agora_brasil = datetime.utcnow() - timedelta(hours=3)
+    hoje = agora_brasil.date()
     segunda = hoje - timedelta(days=hoje.weekday())
     domingo = segunda + timedelta(days=6)
 
@@ -116,7 +117,7 @@ try:
     semanas_tri = ((fim_tri - inicio_tri).days + 1) / 7
 
     st.title("🏗️ Gestão de Projetos")
-    st.markdown(f"<p style='color: #9ca3af; margin-top: -15px;'>Atualizado em: {datetime.now().strftime('%d/%m %H:%M')}</p>", unsafe_allow_html=True)
+    st.markdown(f"<p style='color: #9ca3af; margin-top: -15px;'>Atualizado em: {agora_brasil.strftime('%d/%m %H:%M')}</p>", unsafe_allow_html=True)
     
     tab_geral, tab_individual, tab_time, tab_campo = st.tabs(["📊 Visão Geral", "👤 Analista", "👥 Time", "👷 Campo"])
 
@@ -303,7 +304,6 @@ try:
         st.subheader("Volume Acumulado 2026")
         df_2026 = df_raw[df_raw['DESPACHADO'] >= pd.to_datetime('2026-01-01').date()]
         
-        # Correção aqui para usar COLUNA_NOME corretamente na contagem do time
         df_rec_2026 = df_raw[df_raw['DESPACHADO'] >= pd.to_datetime('2026-01-01').date()]
         df_env_2026 = df_raw[(df_raw['ENVIADO'] >= pd.to_datetime('2026-01-01').date()) & (status_f.str.contains('ok', na=False))]
         
