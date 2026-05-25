@@ -148,15 +148,26 @@ try:
             media_env = df_raw[m_env_tri].shape[0] / semanas_tri if semanas_tri > 0 else 0
             
             p_desp = ((t_desp - media_desp) / media_desp * 100) if media_desp > 0 else 0
+            p_env = ((t_env - media_env) / media_env * 100) if media_env > 0 else 0
+            
+            meses = {1: 'Jan', 2: 'Fev', 3: 'Mar', 4: 'Abr', 5: 'Mai', 6: 'Jun', 
+                     7: 'Jul', 8: 'Ago', 9: 'Set', 10: 'Out', 11: 'Nov', 12: 'Dez'}
+            texto_trimestre = f"{meses[inicio_tri.month]} a {meses[fim_tri.month]}/{fim_tri.year}"
             
             st.markdown("<br>", unsafe_allow_html=True)
-            st.subheader("Performance vs Média (Trimestre)")
+            st.subheader(f"Performance vs Média (Base Meses Fechados: {texto_trimestre})")
+            
             ca1, ca2, ca3, ca4 = st.columns(4)
             
             with ca1:
                 st.metric("Média Despachos", f"{media_desp:.1f}")
                 status_color = "subtext-chamativo" if p_desp >= 0 else "subtext-alerta"
                 st.markdown(f"<p class='{status_color}'>{'▲' if p_desp >= 0 else '▼'} {abs(p_desp):.1f}% vs média</p>", unsafe_allow_html=True)
+            
+            with ca2:
+                st.metric("Média Envios", f"{media_env:.1f}")
+                status_color_env = "subtext-chamativo" if p_env >= 0 else "subtext-alerta"
+                st.markdown(f"<p class='{status_color_env}'>{'▲' if p_env >= 0 else '▼'} {abs(p_env):.1f}% vs média</p>", unsafe_allow_html=True)
             
             with ca3:
                 st.metric("Meta Equipe", f"{media_desp * 1.3:.1f}")
@@ -199,21 +210,18 @@ try:
                     title_text=""
                 )
                 
-                # ==========================================
-                # CORREÇÃO APLICADA AQUI: LEGENDA MOVIDA PARA A ESQUERDA
-                # ==========================================
                 fig_evol.update_layout(
                     plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
                     legend=dict(
                         orientation="h", 
                         yanchor="bottom", 
                         y=1.05, 
-                        xanchor="left", # Alinhado à esquerda
-                        x=0,            # Posição 0 (canto esquerdo)
+                        xanchor="left", 
+                        x=0,            
                         title_text=""
                     ),
                     yaxis_title_text="",
-                    margin=dict(t=50, b=0, l=0, r=0) # Margem superior aumentada para 50
+                    margin=dict(t=50, b=0, l=0, r=0) 
                 )
                 
                 st.plotly_chart(fig_evol, use_container_width=True, key="grafico_area_diario")
@@ -269,15 +277,24 @@ try:
             df_pessoa = df_raw[df_raw[COLUNA_NOME] == nome]
             r_ind = df_pessoa[(df_pessoa['DESPACHADO'] >= inicio) & (df_pessoa['DESPACHADO'] <= fim)].shape[0]
             e_ind = df_pessoa[(df_pessoa['ENVIADO'] >= inicio) & (df_pessoa['ENVIADO'] <= fim) & (status_f.str.contains('ok'))].shape[0]
+            canc_ind = df_pessoa[(df_pessoa['DESPACHADO'] >= inicio) & (df_pessoa['DESPACHADO'] <= fim) & (status_f.str.contains('cancelad'))].shape[0]
             tx_ind = (e_ind / r_ind * 100) if r_ind > 0 else 0
             
             with st.container():
-                col_n, col_m1, col_m2, col_m3 = st.columns([2, 2, 2, 2])
-                col_n.markdown(f"#### {nome}")
-                col_m1.metric("Despachados", r_ind)
-                col_m2.metric("Enviados", e_ind)
-                col_m3.metric("Taxa", f"{tx_ind:.1f}%")
-                st.markdown("<div style='height: 1px; background-color: #30363d; margin-bottom: 20px;'></div>", unsafe_allow_html=True)
+                st.markdown(f"### {nome}")
+                col_cards, col_grafico = st.columns([7, 3])
+                with col_cards:
+                    mc1, mc2, mc3, mc4 = st.columns(4)
+                    mc1.metric("Recebidos (Despachados)", r_ind)
+                    mc2.metric("Enviados (OK)", e_ind)
+                    mc3.metric("Cancelados", canc_ind)
+                    mc4.metric("Taxa de Envio", f"{tx_ind:.1f}%")
+                with col_grafico:
+                    df_graf_ind = pd.DataFrame({'Status': ['Recebidos', 'Enviados', 'Cancelados'], 'Qtd': [r_ind, e_ind, canc_ind]})
+                    fig_bar = px.bar(df_graf_ind, x='Status', y='Qtd', color='Status', color_discrete_map={'Recebidos': '#ffaa00', 'Enviados': '#00ffcc', 'Cancelados': '#ff4b4b'}, height=150)
+                    fig_bar.update_layout(margin=dict(l=0, r=0, t=20, b=0), showlegend=False, plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', xaxis_title=None, yaxis_title=None)
+                    st.plotly_chart(fig_bar, use_container_width=True, key=f"bar_{nome}")
+                st.markdown("<hr style='border-top: 1px solid #333;'>", unsafe_allow_html=True)
 
     # ==========================================
     # ABA 3: TIME
@@ -285,14 +302,22 @@ try:
     with tab_time:
         st.subheader("Volume Acumulado 2026")
         df_2026 = df_raw[df_raw['DESPACHADO'] >= pd.to_datetime('2026-01-01').date()]
-        time_data = df_2026.groupby(COLUNA_NOME).size().reset_index(name='Qtd')
         
-        fig_time = px.bar(time_data, x='Qtd', y=COLUNA_NOME, orientation='h',
-                          color='Qtd', color_continuous_scale='GnBu',
-                          template="plotly_dark")
-        fig_time.update_layout(yaxis={'categoryorder':'total ascending'}, plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
+        # Correção aqui para usar COLUNA_NOME corretamente na contagem do time
+        df_rec_2026 = df_raw[df_raw['DESPACHADO'] >= pd.to_datetime('2026-01-01').date()]
+        df_env_2026 = df_raw[(df_raw['ENVIADO'] >= pd.to_datetime('2026-01-01').date()) & (status_f.str.contains('ok', na=False))]
         
-        st.plotly_chart(fig_time, use_container_width=True, key="grafico_barra_time")
+        rec_por_analista = df_rec_2026.groupby(COLUNA_NOME).size().rename('Recebidos')
+        env_por_analista = df_env_2026.groupby(COLUNA_NOME).size().rename('Enviados')
+        
+        df_time_chart = pd.concat([rec_por_analista, env_por_analista], axis=1).fillna(0).astype(int).reset_index()
+        
+        if not df_time_chart.empty:
+            df_time_chart = df_time_chart[df_time_chart[COLUNA_NOME].str.lower() != 'nan']
+            
+            fig_time = px.bar(df_time_chart, x=COLUNA_NOME, y=['Recebidos', 'Enviados'], barmode='group', labels={'value': 'Total de Projetos', COLUNA_NOME: 'Responsável', 'variable': 'Status'}, color_discrete_map={'Recebidos': '#ffaa00', 'Enviados': '#00ffcc'})
+            fig_time.update_layout(plot_bgcolor='#0b0e14', paper_bgcolor='#0b0e14', font_color='#ffffff', xaxis_title="Equipe", yaxis_title="Volume Acumulado")
+            st.plotly_chart(fig_time, use_container_width=True, key="grafico_barra_time")
 
     # ==========================================
     # ABA 4: CAMPO
