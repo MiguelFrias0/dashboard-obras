@@ -139,7 +139,7 @@ try:
             c1, c2, c3, c4 = st.columns(4)
             c1.metric("Despachados", t_desp)
             c2.metric("Enviados (OK)", t_env)
-            c3.metric("Conversão", f"{taxa:.1f}%")
+            c3.metric("Taxa de envios", f"{taxa:.1f}%")
             c4.metric("Cancelados", t_canc)
 
             m_desp_tri = (df_raw['DESPACHADO'] >= inicio_tri) & (df_raw['DESPACHADO'] <= fim_tri)
