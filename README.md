@@ -6,6 +6,7 @@ Fala, pessoal. Esse repositório guarda o código-fonte do Painel de Controle de
 A interface foi inteiramente construída em Python utilizando o Streamlit, com um visual dark focado em Glassmorphism e gráficos dinâmicos.
 
   Tecnologias Utilizadas
+    
     Python 3
 
     Streamlit: Para a construção de toda a interface web e gerenciamento de estados.
