@@ -4,9 +4,7 @@ from supabase import create_client, Client
 from datetime import datetime, timedelta
 import plotly.express as px
 
-# ==========================================
-# 1. CONFIGURAÇÃO E IDENTIDADE VISUAL DARK-PREMIUM
-# ==========================================
+#Configuração visual
 st.set_page_config(page_title="Gestão de Projetos | High-End", layout="wide")
 
 st.markdown("""
@@ -121,9 +119,7 @@ try:
     
     tab_geral, tab_individual, tab_time, tab_campo = st.tabs(["📊 Visão Geral", "👤 Analista", "👥 Time", "👷 Campo"])
 
-    # ==========================================
-    # ABA 1: VISÃO GERAL
-    # ==========================================
+   #2. CONFIGURAÇÃO 
     with tab_geral:
         if isinstance(periodo, tuple) and len(periodo) == 2:
             inicio, fim = periodo
@@ -267,9 +263,7 @@ try:
             df_table = df_raw[(df_raw['RECEBIDO'] >= inicio) | (df_raw['DESPACHADO'] >= inicio)]
             st.dataframe(df_table, use_container_width=True)
 
-    # ==========================================
-    # ABA 2: ANÁLISE INDIVIDUAL
-    # ==========================================
+#3.ANALISE INDIVIDUAL
     with tab_individual:
         st.subheader("Análise por Orçamentista")
         responsaveis = sorted([r for r in df_raw[COLUNA_NOME].unique() if str(r).lower() != 'nan' and str(r).strip() != ''])
@@ -297,9 +291,7 @@ try:
                     st.plotly_chart(fig_bar, use_container_width=True, key=f"bar_{nome}")
                 st.markdown("<hr style='border-top: 1px solid #333;'>", unsafe_allow_html=True)
 
-    # ==========================================
-    # ABA 3: TIME
-    # ==========================================
+#4. ANALISE DO TIME
     with tab_time:
         st.subheader("Volume Acumulado 2026")
         df_2026 = df_raw[df_raw['DESPACHADO'] >= pd.to_datetime('2026-01-01').date()]
@@ -319,9 +311,7 @@ try:
             fig_time.update_layout(plot_bgcolor='#0b0e14', paper_bgcolor='#0b0e14', font_color='#ffffff', xaxis_title="Equipe", yaxis_title="Volume Acumulado")
             st.plotly_chart(fig_time, use_container_width=True, key="grafico_barra_time")
 
-    # ==========================================
-    # ABA 4: CAMPO
-    # ==========================================
+#5. FUNCIONÁRIOS DE CAMPO
     with tab_campo:
         termo = st.text_input("🔍 Buscar Profissional", placeholder="Nome do parceiro...").upper()
         profissionais = sorted([p for p in df_raw[COLUNA_CAMPO].unique() if str(p).lower() != 'nan' and termo in str(p)])
